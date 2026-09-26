@@ -1,0 +1,23 @@
+{
+  "name": "methodatlas-report-rendering",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:writing": "esbuild prototype/writing.jsx --bundle --minify --format=iife --target=es2022 --outfile=prototype/dist/writing.js --define:process.env.NODE_ENV=\"\\\"production\\\"\"",
+    "check:writing": "node prototype/check-writing.mjs"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "@platejs/suggestion": "53.2.3",
+    "@resvg/resvg-js": "2.6.2",
+    "platejs": "53.3.11",
+    "pptxgenjs": "4.0.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

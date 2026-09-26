@@ -1,0 +1,94 @@
+:root{--ui-scale:1;font-size:calc(16px * var(--ui-scale));--blue:var(--accent);--surface-3:var(--accent-soft);--accent-soft:color-mix(in srgb,var(--accent) 9%,var(--surface));--accent-hover:color-mix(in srgb,var(--accent) 86%,#000);--accent-active:color-mix(in srgb,var(--accent) 75%,#000);--hover-selected:color-mix(in srgb,var(--accent) 14%,var(--surface))}
+:root[data-theme=dark]{color-scheme:dark;--bg:#15191f;--surface:#1d232b;--surface-2:#242c36;--surface-3:var(--accent-soft);--line:#39434f;--line-soft:#303945;--control-line:#788697;--field:#222a34;--ink:#e8edf4;--muted:#b0bac9;--faint:#a0adbf;--disabled:#778596;--hover:#303b49;--preview:#343c47;--danger:#ff9b88;--blue:var(--accent);--shadow-2:0 0.75rem 2.5rem #0006}
+:root[data-theme=dark] :is(.home,.workspace,.app-header,.panel,.panel-head,.composer,.home-menu>div,.nb-card,.compact-dialog,.diary-dialog,.diary-ai,.diary-middle,.diary-toolbar,.memory-card,.memory-editor,.subscription-form,.reader-toolbar,.reader-body,.source-dialog-head,.source-picker,.skill-card,.shortcut-group,.skill-workbench,.writing-toolbar,.writing-header,.writing-outline,.writing-panel,.writing-editor){background-color:var(--surface);color:var(--ink);border-color:var(--line)}
+:root[data-theme=dark] :is(.diary-document p,.diary-card-content p,.diary-document h1,.diary-document h2,.nb-title,.nb-description,.shortcut-title,.shortcut-desc){color:var(--ink)}
+:root[data-theme=dark] :is(input,textarea,select){background-color:var(--field);color:var(--ink);border-color:var(--control-line)}
+:root[data-theme=dark]{--pill-ink:#102038}
+:root[data-theme=dark] .shell-nav{background:var(--surface-2)}
+:root[data-theme=dark] :is(.responsive-paper,.responsive-paragraph){color:var(--ink)}
+:root[data-theme=dark] .reader-evidence{background:#685822;color:#fff5cf}
+:root[data-theme=dark] .page-warning{background:#463424;color:#ffd0a5}
+/* 研究日报（progress）：浅色值全写死在 index.html 的内联 <style> 里，深色下逐条对齐到本文件已有的角色色——
+   面板/卡片一律 --surface（跟文献库、订阅、远程那些卡片同值），需要抬升才用 --surface-2，柔和强调用 --accent-soft，不直接用满强度 --accent。 */
+:root[data-theme=dark] #source-body:has(.diary-top){background-color:var(--surface)}
+:root[data-theme=dark] .diary-card{background-color:var(--surface);border-color:var(--line)}
+:root[data-theme=dark] .diary-entry.selected .diary-card{border-color:color-mix(in srgb,var(--accent) 40%,var(--surface))}
+:root[data-theme=dark] :is(.diary-entry.weekly,.diary-entry.monthly) .diary-card{background-image:linear-gradient(145deg,var(--accent-soft),var(--surface) 70%)}
+:root[data-theme=dark] :is(.diary-entry.weekly,.diary-entry.monthly) .diary-line:after{background:var(--accent)}
+:root[data-theme=dark] :is(.diary-entry.weekly,.diary-entry.monthly) .diary-card footer{color:color-mix(in srgb,var(--accent) 45%,var(--muted))}
+:root[data-theme=dark] .diary-line:before{border-left-color:var(--line)}
+:root[data-theme=dark] .diary-line:after{border-color:var(--control-line);background:var(--surface)}
+:root[data-theme=dark] .diary-card-content p{color:var(--muted)}
+:root[data-theme=dark] .diary-kicker{color:color-mix(in srgb,var(--accent) 40%,var(--muted))}
+:root[data-theme=dark] .diary-section-number{color:color-mix(in srgb,var(--accent) 40%,var(--muted));border-bottom-color:color-mix(in srgb,var(--accent) 30%,var(--surface))}
+:root[data-theme=dark] :is(.diary-notice,.diary-proposal){background-color:var(--accent-soft);color:var(--ink);border-color:var(--line)}
+:root[data-theme=dark] .diary-setting-group{background-color:var(--surface-2);color:var(--ink);border-color:var(--line)}
+:root[data-theme=dark] .diary-setting-row{border-bottom-color:var(--line-soft)}
+:root[data-theme=dark] .diary-scope-grid label{border-color:var(--line);background-color:var(--surface-2)}
+:root[data-theme=dark] .diary-scope-grid label:has(:checked){border-color:#a99ee8;background-color:color-mix(in srgb,#a99ee8 20%,var(--surface))}
+:root[data-theme=dark] .diary-scope-grid input{accent-color:#a99ee8}
+:root[data-motion=reduce] *, :root[data-motion=reduce] *::before, :root[data-motion=reduce] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+:root[data-motion=reduce] button:hover{transform:none!important}
+:root[data-density=compact] :is(.paper-row,.library-row,.conversation-row,.day-row){padding-top:0.375rem;padding-bottom:0.375rem}
+:root[data-density=compact] .nb-card{padding:1rem;min-height:8.75rem}
+:root[data-density=compact] .panel-head{min-height:2.375rem}
+:root[data-density=compact] .setting-row{padding-top:0.6875rem;padding-bottom:0.6875rem}
+#settings-dialog{width:min(55rem,calc(100vw - 2rem));max-width:none;height:min(51.25rem,90dvh);max-height:90dvh;padding:0;border:1px solid var(--line);border-radius:1rem;background:var(--surface);color:var(--ink);box-shadow:var(--shadow-2);overflow:hidden}
+#settings-dialog::backdrop{background:#10182866}
+.settings-heading{flex:none;display:flex;justify-content:space-between;align-items:center;padding:1.5rem 1.75rem 1.25rem;border-bottom:1px solid var(--line)}
+.settings-heading h2{font-size:1.375rem;margin:0 0 0.375rem;letter-spacing:-.5px}.settings-heading p{font-size:0.8125rem;color:var(--muted);margin:0}
+.settings-layout{display:grid;grid-template-columns:11.25rem 1fr;flex:1;min-height:0;overflow:hidden;grid-template-rows:minmax(0,1fr)}
+.settings-layout nav{display:flex;flex-direction:column;gap:0.3125rem;padding:1.25rem 0.75rem;background:var(--surface-2);border-right:1px solid var(--line)}
+.settings-layout nav button{background:transparent;border:0;padding:0.75rem;text-align:left;border-radius:0.5rem;font-size:0.875rem;min-height:2.625rem}
+.settings-layout nav button[aria-current]{background:var(--surface);color:var(--accent);font-weight:600;box-shadow:var(--shadow-1)}
+.settings-content{min-height:0;padding:1.5625rem 1.875rem;overflow:auto;overscroll-behavior:contain;min-width:0}.settings-content fieldset{border:0;margin:0;padding:0;min-width:0}.settings-content h3{font-size:1.125rem;margin:0 0 0.625rem}.settings-content h4{font-size:0.9375rem;margin:0}
+.setting-intro{font-size:0.8125rem;line-height:1.8;color:var(--muted);margin:0 0 0.9375rem}.setting-row{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;padding:1.125rem 0;border-bottom:1px solid var(--line-soft)}
+.setting-row strong{font-size:0.875rem;font-weight:550}.setting-row small,.connection-card small{display:block;color:var(--muted);font-size:0.75rem;line-height:1.7;margin-top:0.25rem}
+.setting-row select,.setting-row button{min-height:2.25rem;padding:0.375rem 0.625rem;font-size:0.8125rem;max-width:12.5rem}.setting-row input[type=range]{width:10rem;accent-color:var(--accent)}
+.setting-colors{display:flex;gap:0.5rem}.setting-colors button{padding:0;width:1.8125rem;min-height:1.8125rem;border-radius:50%;background:var(--swatch);color:white;border:0.1875rem solid var(--surface);outline:1px solid transparent;font-size:1rem}.setting-colors button[aria-pressed=true]{outline-color:var(--swatch)}
+.setting-reading-preview{background:var(--surface-2);padding:1.25rem;border-radius:0.625rem;margin-top:1.375rem;line-height:1.85}.setting-reading-preview small{font:0.75rem system-ui;color:var(--muted)}.setting-reading-preview p{margin:0.5rem 0}
+.connection-list{display:grid;gap:0.75rem;margin:1.25rem 0}.connection-card{border:1px solid var(--line);padding:0.9375rem;border-radius:0.625rem;background:var(--surface-2);overflow-wrap:anywhere}.connection-card.selected{border-color:var(--accent)}.connection-card .badge{margin-left:0.5rem}.connection-actions{display:flex;flex-wrap:wrap;gap:0.375rem;margin-top:0.75rem}.connection-actions button{font-size:0.75rem;padding:0.3125rem 0.5625rem}.connection-checks{font-size:0.75rem;color:var(--muted);line-height:1.8;margin:0.75rem 0 0;padding-left:1.125rem}
+.connection-form{display:grid;grid-template-columns:1fr 1fr;gap:0.875rem;padding-top:1.25rem;border-top:1px solid var(--line)}.connection-form>label{display:flex;flex-direction:column;gap:0.4375rem;font-size:0.8125rem}.connection-form input,.connection-form select{min-height:2.375rem;width:100%;padding:0.5rem;border:1px solid var(--control-line);border-radius:0.375rem;background:var(--field)}.connection-form>.row,.connection-form>details,.connection-form>.connection-default,.connection-form>small{grid-column:1/-1}.connection-form details{font-size:0.8125rem;line-height:1.8}.connection-form details label{display:flex;align-items:center;justify-content:space-between;gap:1.125rem;margin:0.75rem 0}.connection-form details :is(input,select){max-width:13.75rem}.connection-form .connection-default{flex-direction:row;align-items:center}.connection-default input{width:1.0625rem;min-height:1.0625rem;accent-color:var(--accent)}.connection-form small{color:var(--muted);font-size:0.75rem}.setting-empty{font-size:0.8125rem;line-height:1.8;color:var(--muted);background:var(--surface-2);padding:1rem;border-radius:0.5rem}
+#settings-feedback:empty{display:none}#settings-feedback{margin-bottom:1rem;font-size:0.8125rem;line-height:1.8;color:var(--accent)}#settings-feedback[role=alert],.connection-actions .danger{color:var(--danger)}.settings-path{font-size:0.75rem;overflow-wrap:anywhere;max-width:55%;line-height:1.8}
+.chat-preferences{display:flex;align-items:center;gap:0.375rem;flex-wrap:wrap;padding:0.5625rem 0 0;border-top:1px solid var(--line-soft);margin-top:0.5rem}.chat-preferences select,.chat-preferences button{font-size:0.6875rem;min-height:1.8125rem;border:1px solid transparent;border-radius:0.375rem;background:var(--surface-2);padding:0.25rem 0.4375rem;color:var(--muted);max-width:11.25rem}.chat-preferences .chat-model{min-width:0;max-width:100%}.chat-preferences [aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+@container app (max-width:40.0rem){#settings-dialog{width:calc(100vw - 1rem);max-height:94dvh}.settings-heading{flex:none;padding:1.125rem}.settings-layout{display:flex;flex-direction:column;min-height:0}.settings-layout nav{flex-direction:row;flex-wrap:wrap;padding:0.5rem;border-right:0;border-bottom:1px solid var(--line);gap:0.1875rem}.settings-layout nav button{font-size:0.75rem;padding:0.5rem}.settings-content{min-height:0;padding:1.25rem}.setting-row{gap:0.75rem;flex-wrap:wrap}.connection-form{grid-template-columns:1fr}.settings-path{max-width:100%}.setting-row input[type=range]{width:8.75rem}.chat-preferences select{max-width:10rem}}
+
+/* One root scale drives typography, spacing, icons and responsive layout. Hairlines stay crisp. */
+body{container:app / inline-size;line-height:1.5}
+#settings-dialog[open]{display:flex;flex-direction:column}
+.settings-layout nav{overflow:auto;min-height:0;flex-shrink:0}
+.settings-content{flex:1;scrollbar-gutter:stable}
+.setting-row{flex-wrap:wrap}.setting-row>div{min-width:0;overflow-wrap:anywhere}
+.connection-form{grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr))}
+.connection-form label{min-width:0}.connection-form details label{flex-wrap:wrap}
+.connection-form details :is(input,select){min-width:0;max-width:100%}
+.settings-heading>div{min-width:0}.settings-heading .icon{flex-shrink:0}
+.setting-reading-preview{font-size:1.0625rem}
+:root{--success:#26844f;--warning:#956628;--danger-soft:color-mix(in srgb,var(--danger) 10%,var(--surface));--success-soft:color-mix(in srgb,var(--success) 12%,var(--surface));--green:var(--success)}
+:root[data-theme=dark]{--success:#78ce99;--warning:#e5b979;--accent-hover:color-mix(in srgb,var(--accent) 82%,white);--accent-active:color-mix(in srgb,var(--accent) 70%,white)}
+::selection{background:var(--hover-selected);color:var(--ink)}
+:focus-visible{outline-color:var(--accent)}
+
+/* A single composer row; model names truncate before controls wrap. */
+.composer-bottom{gap:.75rem;flex-wrap:nowrap;container:composer / inline-size}
+.composer-tools{flex:none;flex-wrap:nowrap}.composer-bottom>.row{flex:none}
+.composer-bottom .chat-preferences{flex:0 1 auto;min-width:0;flex-wrap:nowrap;border:0;padding:0;margin:0 0 0 auto;gap:.75rem}
+.chat-model-trigger{flex:0 1 auto;min-width:0;max-width:none!important;white-space:nowrap;gap:.25rem}
+.chat-model-trigger>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.chat-model-trigger>span:last-child{flex:none}
+.chat-style{flex:none;min-width:0}.chat-style select{max-width:6rem}
+#chat-model-menu{inset:auto;margin:0;width:min(19rem,calc(100vw - 1rem));padding:1rem;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface);color:var(--ink);box-shadow:var(--shadow-2);overflow:auto}
+#chat-model-menu label{display:grid;gap:.5rem;margin-bottom:.75rem;font-size:.8125rem}
+#chat-model-menu .sr-only{position:static;width:auto;height:auto;clip:auto;overflow:visible}
+#chat-model-menu select{width:100%;max-width:none}
+@container composer (max-width:25rem){.workbench-trigger span{display:none}.workbench-trigger{padding:.375rem;min-height:1.875rem}.chat-preferences select,.chat-preferences button{padding-inline:.25rem}}
+
+.chat-style .select-display{font-size:.6875rem;min-height:1.8125rem;padding:.25rem .4375rem;gap:.25rem;background:var(--surface-2)}
+.chat-style .select-display svg{width:.75rem;height:.75rem}
+
+/* Quiet edge-aligned controls leave open space between tools and model choices. */
+.composer-bottom .workbench-trigger{padding:.375rem;border:0;background:transparent;color:var(--muted);min-height:1.875rem}
+.composer-bottom .workbench-trigger span{display:none}
+.composer-bottom .chat-model-trigger,.chat-style .select-display{background:transparent;border-color:transparent;box-shadow:none}
+.composer-bottom .chat-model-trigger{max-width:13rem!important;color:var(--ink)}
+.composer-bottom .chat-model-trigger:hover,.composer-bottom .workbench-trigger:hover,.chat-style .select-display:hover{background:var(--hover)}

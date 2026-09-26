@@ -1,0 +1,4 @@
+# Source baseline 0.14.7; Apache-2.0 LICENSE (package metadata says MIT).
+gpt-researcher @ git+https://github.com/assafelovic/gpt-researcher.git@6f998577d547b1e54ec662dac63583aa11e3b84b
+langchain-huggingface==1.2.2
+sentence-transformers==6.0.1

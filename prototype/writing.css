@@ -1,0 +1,198 @@
+/* Manuscript panel in the Studio column — document-first redesign.
+   Reference layout: a slim header bar (title + save state + overflow menu), a plain paper
+   surface for the body text, and a compact icon dock pinned to the bottom like a word
+   processor's formatting bar. One control height, one radius, no shadows on controls. */
+
+.writing-workspace{display:flex;flex-direction:column;gap:0.75rem;font-size:0.90625rem;color:var(--ink)}
+.writing-workspace input:not([type=checkbox]),.writing-workspace textarea{box-sizing:border-box;width:100%}
+
+/* Header bar: title reads as the document name, save state as a status dot, facts below.
+   The hairline under the bar mirrors the reference's top bar separator. */
+.writing-head{display:flex;flex-direction:column;gap:0.3125rem;padding-bottom:0.625rem;border-bottom:1px solid var(--line-soft)}
+.writing-head-row{display:flex;align-items:center;gap:0.5rem;min-width:0}
+.writing-title{flex:1;min-width:0;padding:0;border:0;background:none;box-shadow:none;font-size:1rem;font-weight:600;line-height:1.45;color:var(--ink)}
+.writing-title::placeholder{color:var(--faint)}
+.writing-title:disabled{color:var(--muted)}
+/* 历史版本是只读的：必须在编辑区顶部说清楚，并给一条回最新版的路，否则用户只会觉得「打不进去字」。 */
+.writing-readonly{display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin:0;padding:0.4375rem 0.625rem;border:1px solid var(--line-soft);border-radius:var(--radius);background:var(--surface-2);font-size:0.84375rem;line-height:1.6;color:var(--muted)}
+.writing-readonly span{min-width:0}
+.writing-readonly button{flex:none;padding:2px 0.5625rem;font-size:0.84375rem}
+.writing-status{display:flex;align-items:center;gap:0.4375rem;margin:0;font-size:0.84375rem;line-height:1.6;color:var(--muted)}
+.writing-status::before{content:"";flex:none;width:0.4375rem;height:0.4375rem;border-radius:50%;background:var(--green)}
+.writing-status[data-state=pending]::before{background:var(--warning)}
+.writing-status[data-state=error]::before{background:var(--danger)}
+/* Breathing: the panel breathes only while the AI is actually working (same 1.7s rhythm as the chat),
+   never for the calm "已保存" / "待保存" states. */
+@keyframes breathe{0%,100%{opacity:1}50%{opacity:.5}}
+.writing-status[data-busy=true],.writing-proposal strong.writing-generating{animation:breathe 1.7s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.writing-status[data-busy=true],.writing-proposal strong.writing-generating{animation:none!important;opacity:1!important}}
+.writing-meta{margin:0;font-size:0.875rem;line-height:1.7;color:var(--faint)}
+.writing-meta{display:none}
+
+/* Overflow menu ("···"): exports and manual save live here instead of a button row. */
+.writing-menu{flex:none;position:relative}
+.writing-menu>summary{display:flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;border-radius:var(--radius-sm);list-style:none;cursor:pointer;font-size:0.875rem;letter-spacing:1px;color:var(--muted);user-select:none}
+.writing-menu>summary::-webkit-details-marker{display:none}
+.writing-menu>summary:hover{background:var(--hover);color:var(--ink)}
+.writing-menu-panel{position:absolute;right:0;top:calc(100% + 0.375rem);z-index:30;display:flex;flex-direction:column;min-width:9.875rem;padding:0.3125rem;border:1px solid var(--line-soft);border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-2);animation:writing-menu-pop 200ms var(--ease)}
+@keyframes writing-menu-pop{from{opacity:0;transform:translateY(-0.25rem) scale(.98)}to{opacity:1;transform:none}}
+.writing-menu-panel button{justify-content:flex-start;width:100%;height:2rem;padding:0 0.625rem;border:0;border-radius:var(--radius);background:none;box-shadow:none;font-size:0.875rem;color:var(--ink);text-align:left;white-space:nowrap}
+.writing-menu-panel button:hover:not(:disabled){background:var(--hover);color:var(--accent-hover);transform:none;box-shadow:none}
+.writing-menu-panel button:disabled{opacity:.45}
+
+/* Outline: text links, not pills. */
+.writing-outline{display:none}
+.writing-outline button{padding:0;border:0;background:none;box-shadow:none;font-size:0.875rem;color:var(--accent)}
+.writing-outline button:hover:not(:disabled){background:var(--hover);color:var(--ink);transform:none;box-shadow:none}
+
+/* Paper surface: the manuscript itself, not a form box. */
+.writing-content{min-height:18.75rem;padding:0.625rem 0.25rem 1rem;border:0;border-radius:0;background:none;overflow-wrap:anywhere;outline:none!important;font-size:0.9375rem;line-height:1.95}
+.writing-content h1{font-size:1.875rem;line-height:1.25;margin:1.75rem 0 0.875rem;font-weight:700;color:var(--ink)}
+.writing-content h2{font-size:1.5rem;line-height:1.35;margin:1.5rem 0 0.75rem;font-weight:650;color:var(--ink)}
+.writing-content h3{font-size:1.1875rem;line-height:1.45;margin:1.25rem 0 0.625rem;font-weight:600;color:var(--ink)}
+.writing-content p{margin:0.625rem 0}
+.writing-content table{border-collapse:collapse;width:100%;table-layout:fixed}
+.writing-content td{border:1px solid var(--line);min-width:2.1875rem;padding:0.375rem;vertical-align:top}
+.writing-content figure{margin:0.75rem 0}
+.writing-content img{max-width:100%;height:auto}
+.writing-equation{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
+.writing-content ins{background:var(--success-soft);text-decoration:underline;color:var(--success)}
+.writing-content del{background:var(--danger-soft);text-decoration:line-through;color:var(--danger)}
+.writing-task{display:flex;align-items:flex-start;gap:0.5rem;margin:0.625rem 0}.writing-task input{appearance:none;-webkit-appearance:none;flex:none;box-sizing:border-box;width:1.1875rem;height:1.1875rem;margin:0.25rem 0 0;padding:0;border-radius:0.375rem;border:1px solid #c9cdd6;background:#eceef2;cursor:pointer;transition:background-color .15s ease,border-color .15s ease}.writing-task input:checked{border-color:var(--ink,#182230);background-color:var(--ink,#182230);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:center;background-size:0.75rem 0.75rem}.writing-task span{flex:1}
+.writing-code{margin:0.625rem 0;padding:0.75rem 0.875rem;border-radius:0.5rem;background:#f4f5f7;white-space:pre-wrap;overflow:auto;font-family:ui-monospace,monospace}.writing-quote{margin:0.625rem 0;padding:0.5rem 0.875rem;border-left:0.1875rem solid var(--accent);color:var(--muted)}.writing-divider{margin:1.125rem 0;border:0;border-top:1px solid var(--line)}
+.writing-command-menu{position:absolute;z-index:40;left:1.5rem;top:2.5rem;display:flex;flex-direction:column;min-width:9.375rem;padding:0.3125rem;border:1px solid var(--line-soft);border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-2)}
+.writing-command-menu{max-height:14.25rem;overflow-y:auto;overscroll-behavior:contain}
+.writing-command-menu button{display:grid;grid-template-columns:1.75rem 1fr;gap:0.5rem;align-items:center;justify-content:stretch;border:0;background:none;box-shadow:none;min-height:2.25rem;text-align:left}.writing-command-menu button span{display:flex;align-items:center;justify-content:center}.writing-command-menu button svg{width:1rem;height:1rem;flex:none}.writing-command-menu button b{font-weight:400}.writing-command-menu button:hover{background:var(--hover);transform:none}
+.writing-toolbar{display:none!important}
+.paper-layout-top-actions{display:none!important}
+.paper-layout-status,.paper-layout-reason{display:none!important}
+.paper-layout-actions{justify-content:flex-end}
+.paper-layout-generate{order:2}
+.writing-cite{color:var(--accent)}
+
+/* Formatting dock: 引用与参考文献 sits right above the toolbar and the pair travels together —
+   the dock fills the column bottom (margin-top:auto) and stays pinned there while long content scrolls. */
+#output-body > .writing-workspace, #output-body > #writing-host{flex:1 0 auto}
+#output-body > #writing-host{display:flex;flex-direction:column}
+#output-body #writing-host > .writing-workspace{flex:1 0 auto}
+.writing-dock{order:9;margin-top:auto;position:sticky;bottom:0;z-index:20;display:flex;flex-direction:column;gap:0.5rem;background:var(--surface)}
+.writing-citations{padding:0.375rem 0.5rem;border:1px solid var(--line-soft);border-radius:var(--radius-lg);background:var(--surface)}
+.writing-citations>summary{width:100%}
+.writing-citations-list{display:flex;flex-direction:column;gap:0.375rem;max-height:10.25rem;overflow:auto;margin-top:0.375rem;padding-right:0.25rem}
+.writing-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:0.1875rem;margin:0 -2px;padding:0.4375rem 0.5rem;border:1px solid var(--line-soft);border-radius:var(--radius-lg);background:var(--surface);min-width:0}
+.writing-toolbar select,.writing-toolbar .writing-mark,.writing-toolbar .writing-tool,.writing-upload{box-sizing:border-box;height:1.875rem;min-width:0;padding:0;border:0;border-radius:var(--radius-sm);background:none;color:var(--ink);font-size:0.875rem;box-shadow:none;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.writing-toolbar select{flex:1 1 4.625rem;min-width:4rem;max-width:6.875rem;padding:0 0.375rem;background:var(--surface-2);cursor:pointer}
+.writing-toolbar .writing-mark,.writing-toolbar .writing-tool,.writing-upload{flex:none;width:1.875rem;cursor:pointer}
+.writing-toolbar .writing-mark:hover:not(:disabled),.writing-toolbar .writing-tool:hover:not(:disabled),.writing-upload:hover{background:var(--hover);color:var(--accent-hover);transform:none;box-shadow:none}
+.writing-toolbar .writing-mark:active:not(:disabled),.writing-toolbar .writing-tool:active:not(:disabled),.writing-upload:active{background:var(--surface-3)}
+.writing-toolbar button:disabled{opacity:.4}
+.writing-glyph{font-size:0.875rem;line-height:1}
+.writing-sep{flex:none;width:1px;height:1.125rem;margin:0 0.1875rem;background:var(--line-soft)}
+.writing-count{flex:1 0 auto;margin-left:0.375rem;font-size:0.84375rem;color:var(--faint);text-align:right;white-space:nowrap}
+/* The upload control is a label shaped like the buttons beside it: the native file input stays invisible. */
+.writing-upload{position:relative;overflow:hidden}
+.writing-upload input[type=file]{position:absolute;inset:0;width:100%;height:100%;padding:0;border:0;opacity:0;cursor:pointer}
+
+/* Collapsible blocks inside the panel: same triangle behaviour as the rest of the workspace. */
+.writing-workspace details>summary{display:flex;align-items:center;gap:0.5rem;width:fit-content;list-style:none;cursor:pointer;font-size:0.875rem;color:var(--muted)}
+.writing-workspace details>summary::-webkit-details-marker{display:none}
+.writing-workspace details:not(.writing-menu)>summary::before{content:"";flex:none;width:0;height:0;border-left:0.3125rem solid currentColor;border-top:0.28125rem solid transparent;border-bottom:0.28125rem solid transparent;transform-origin:32% 50%;transition:transform 240ms var(--ease)}
+.writing-workspace details[open]>summary::before{transform:rotate(90deg)}
+
+/* AI revision block: one quiet card, mode selector in the card head. */
+.writing-ai{display:flex;flex-direction:column;gap:0.6875rem;padding:0.875rem;border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface)}
+.writing-ai-head{display:flex;align-items:center;justify-content:space-between;gap:0.625rem}
+.writing-ai-head strong{font-size:0.875rem}
+.writing-mode{display:flex;align-items:center;gap:0.4375rem;font-size:0.875rem;color:var(--faint);min-width:0}
+.writing-mode select{height:1.875rem;max-width:9.375rem;padding:0 0.5rem;font-size:0.84375rem}
+.writing-instruction{min-height:4.625rem;font-size:0.84375rem;line-height:1.7}
+.writing-checks{display:flex;flex-direction:column;gap:0.5rem}
+.writing-check{display:flex;align-items:flex-start;gap:0.5625rem;font-size:0.875rem;line-height:1.6;color:var(--ink);cursor:pointer}
+.writing-check input[type=checkbox]{margin:0.1875rem 0 0}
+.writing-actions{display:flex;flex-wrap:wrap;gap:0.5rem}
+.writing-actions button{flex:1 1 auto;min-width:0;height:2.125rem;padding:0 0.75rem;border-radius:var(--radius-sm);font-size:0.84375rem;box-shadow:none;white-space:nowrap}
+.writing-actions button.primary{flex-basis:100%}
+.writing-restore{height:2.125rem;border-radius:var(--radius-sm);font-size:0.84375rem}
+.writing-error,.writing-workspace [role=alert]{padding:0.625rem 0.75rem;border:0;border-radius:var(--radius);background:transparent;color:var(--ink);font-size:0.875rem;line-height:1.7}
+.writing-error p{margin:0 0 0.625rem}
+
+/* Review proposals. */
+.writing-proposal{display:flex;flex-direction:column;gap:0.5625rem;padding:0.875rem;border:1px solid var(--line-soft);border-radius:var(--radius-lg);background:var(--surface-2)}
+.writing-proposal strong{font-size:0.875rem}
+.writing-proposal p{margin:0;font-size:0.875rem;line-height:1.7;color:var(--muted)}
+.writing-proposal .writing-content{min-height:7.5rem;padding:0.375rem 2px;font-size:0.84375rem}
+.writing-proposal > button{height:2rem;padding:0 0.75rem;border:0;border-radius:var(--radius-sm);background:var(--surface-3);box-shadow:none;font-size:0.875rem;color:var(--accent)}
+.writing-proposal > button:hover:not(:disabled){background:var(--hover);transform:none;box-shadow:none;color:var(--accent-hover)}
+.writing-proposal .writing-actions button{flex:1 1 0}
+
+/* Keep insertion visible even when the title exceeds the narrow output column. */
+.writing-citation{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0.5rem;margin:0.5625rem 0 0;font-size:0.875rem}
+.writing-citation .writing-citation-title{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;padding:0;border:0;background:none;box-shadow:none;font-size:0.875rem;color:var(--accent)}
+.writing-citation .writing-cite-action{display:inline-flex;align-items:center;white-space:nowrap;height:1.75rem;padding:0 0.625rem;border:0;border-radius:var(--radius-sm);background:var(--accent);color:white;font-size:0.75rem;box-shadow:none}
+.writing-citation .writing-cite-action:hover:not(:disabled){background:var(--accent-hover);color:white;transform:none;box-shadow:none}
+.writing-cite{vertical-align:super;font-size:.72em;line-height:0}
+.writing-cite>button,.writing-cite>button:hover:not(:disabled){display:inline;padding:0;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;min-width:0;min-height:0;height:auto;font:inherit;line-height:inherit;color:var(--accent);transform:none}
+
+.writing-workspace small{display:block;overflow-wrap:anywhere;color:var(--faint)}
+
+/* Same rule as the workspace chrome: the panel's labels, status and counters are read-only text, so no
+   caret can be dropped on them. The manuscript, the citation titles and every field stay selectable
+   (index.html repeats the whitelist; kept here too so the sheet works on its own). */
+.writing-status,.writing-meta,.writing-count,.writing-outline,.writing-mode,.writing-ai-head,
+.writing-readonly,
+.writing-proposal strong,.writing-proposal p,.writing-citation small{user-select:none;-webkit-user-select:none}
+.writing-content,.writing-citation>button,.writing-instruction,
+input,textarea,select,[contenteditable]:not([contenteditable="false"]){user-select:text;-webkit-user-select:text}
+
+/* Selection actions stay beside the selected manuscript text. */
+.writing-surface{position:relative}
+.writing-selection-menu{position:absolute;left:0.25rem;z-index:25;display:flex;flex-wrap:wrap;max-width:calc(100% - 0.5rem);padding:0.1875rem;border:1px solid var(--line-soft);border-radius:0.625rem;background:var(--surface);box-shadow:var(--shadow-2)}
+.writing-selection-menu button{min-height:1.875rem;padding:0.25rem 0.625rem;border:0;background:none;color:var(--ink);box-shadow:none;font-size:0.8125rem}
+.writing-selection-menu button+button{border-left:1px solid var(--line-soft);border-radius:0}
+.writing-selection-menu button:disabled{opacity:.45;cursor:not-allowed}
+.writing-selection-hint{flex-basis:100%;padding:0.25rem 0.5rem;font-size:0.75rem;color:var(--muted)}
+.writing-inline-edit{position:absolute;left:0;right:0;z-index:26;display:flex;align-items:center;gap:0.375rem;flex-wrap:wrap;padding:0.4375rem 0.625rem;border:1px solid var(--line-soft);border-radius:1.375rem;background:var(--surface);box-shadow:var(--shadow-2)}
+.writing-inline-edit input{flex:1;min-width:5rem;border:0;background:none;padding:0.3125rem;font:inherit;box-shadow:none}
+.writing-inline-edit button{flex:none;width:1.875rem;height:1.875rem;padding:0;border:0;border-radius:50%;background:var(--surface-2);font-size:1.25rem;box-shadow:none}
+.writing-inline-edit button[type=submit]{background:var(--ink);color:var(--surface)}
+.writing-inline-edit p{flex-basis:100%;margin:0;font-size:0.8125rem}
+.selected-fragments{margin:0 0 0.625rem;font-size:0.8125rem;color:var(--ink);text-align:left}
+.selected-fragments>summary{display:inline-flex;align-items:center;gap:2px;list-style:none;cursor:pointer;width:fit-content;padding:0.3125rem 0.375rem 0.3125rem 0.625rem;border:1px solid var(--line-soft);border-radius:1rem;background:var(--surface)}
+.selected-fragments>summary::-webkit-details-marker{display:none}
+.selected-fragments-remove{width:1.125rem;height:1.125rem;margin-left:2px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);font-size:1rem;line-height:1;opacity:0;pointer-events:none;box-shadow:none;transition:opacity 120ms ease,background 120ms ease,color 120ms ease}
+.selected-fragments:hover .selected-fragments-remove,.selected-fragments:focus-within .selected-fragments-remove,.selected-fragments-remove:focus-visible{opacity:1;pointer-events:auto}
+.selected-fragments-remove:hover{background:var(--hover);color:var(--ink)}
+.selected-fragment-list{max-height:13.75rem;overflow:auto;margin-top:0.5rem}
+.selected-fragment{padding:0.5rem 0.625rem;border:1px solid var(--line-soft);border-radius:0.625rem;background:var(--surface);margin-top:0.375rem}
+.selected-fragment>div{display:flex;align-items:center;justify-content:space-between;gap:0.5rem}
+.selected-fragment small{color:var(--muted)}
+.selected-fragment button{height:1.75rem;width:1.75rem;padding:0;border:0;background:none;box-shadow:none;opacity:0;pointer-events:none;transition:opacity 120ms ease}
+.selected-fragment:hover button,.selected-fragment:focus-within button{opacity:1;pointer-events:auto}
+.selected-fragment blockquote{white-space:pre-wrap;overflow-wrap:anywhere;margin:0.3125rem 0;line-height:1.6;user-select:text}
+
+/* Real PDF preview replaces the manuscript surface inside the existing right column. */
+.writing-workspace[data-preview=true]>.writing-surface,.writing-workspace[data-preview=true]>.writing-outline,.writing-workspace[data-preview=true]>.writing-dock{display:none}
+.writing-layout{display:flex;flex-direction:column;gap:0.5rem;min-width:0}
+.paper-layout-actions,.paper-layout-switch,.paper-preview-tools{display:flex;align-items:center;flex-wrap:wrap;gap:0.375rem}
+.writing-layout button{min-height:2rem;padding:0.375rem 0.625rem;font-size:0.8125rem;box-shadow:none}
+.paper-layout-switch{margin-left:auto;gap:2px}
+.paper-layout-switch button[aria-pressed=true]{background:var(--hover);font-weight:600}
+.paper-layout-status,.paper-layout-reason{margin:0;color:var(--muted);font-size:0.75rem;line-height:1.6}
+.paper-layout-error{margin:0;color:var(--ink);font-size:0.8125rem;overflow-wrap:anywhere}
+.paper-preview{min-width:0;border:1px solid var(--line-soft);border-radius:var(--radius-sm);background:var(--surface-2,#f2f3f4);overflow:hidden}
+.paper-preview-tools{padding:0.5rem;font-size:0.75rem;border-bottom:1px solid var(--line-soft)}
+.paper-preview-tools label{display:flex;align-items:center;gap:0.25rem;margin-left:auto}
+.paper-preview-tools select{max-width:7.5rem;min-height:1.875rem;padding:2px 0.375rem;font-size:0.75rem}
+.paper-preview-scroll{overflow:auto;padding:0.75rem;max-height:72vh;overscroll-behavior:contain}
+.paper-preview-scroll canvas{display:block;background:white;box-shadow:0 2px 0.625rem #00000014}
+.paper-preview-status{margin:0;padding:0 0.5rem;font-size:0.75rem;color:var(--muted)}
+.paper-page-text{padding:0.5rem;font-size:0.75rem;line-height:1.7;overflow-wrap:anywhere}
+.paper-page-text p{white-space:pre-wrap}
+.writing-layout .paper-layout-export{align-self:flex-end;min-height:2.25rem;background:var(--ink);color:var(--surface)}
+.writing-layout button:disabled{opacity:.5;cursor:not-allowed}
+
+@keyframes proposal-enter{from{opacity:0;transform:translateY(0.25rem)}to{opacity:1;transform:none}}
+@keyframes proposal-exit{to{opacity:0}}
+.writing-proposal[data-state=pending]{animation:proposal-enter 180ms var(--ease)}
+.writing-proposal[data-state=exiting]{animation:proposal-exit 120ms var(--ease) forwards}
+@media(prefers-reduced-motion:reduce){.writing-proposal{animation:none!important}}

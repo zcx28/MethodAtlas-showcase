@@ -1,0 +1,39 @@
+# Dependencies and build output
+node_modules/
+.venv/
+.research-deps/
+venv/
+__pycache__/
+*.py[cod]
+prototype/dist/
+build/
+dist/
+coverage/
+.cache/
+# Local configuration and research data
+.env
+.env.*
+!.env.example
+*.local
+.methodatlas-data/
+论文/
+papers/
+.check-data/
+.manual-check-data*/
+.startup-check-data/
+# Check output
+.pytest_cache/
+.playwright-cli/
+test-results/
+playwright-report/
+blob-report/
+output/
+# Temporary and editor files
+*.log
+*.tmp
+*.temp
+*.swp
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
