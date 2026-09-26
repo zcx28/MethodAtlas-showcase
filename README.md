@@ -6,7 +6,7 @@
 
 围绕研究主题收集论文，在原文旁持续提问、比较方法，把有依据的结论整理成文稿、图表和汇报。研究保留所用资料的版本；点击引用，可以回到对应原文。
 
-[在线体验](https://methodatlas.64-90-4-239.sslip.io/) · [观看演示](docs/assets/methodatlas-demo.mp4) · [本地安装](docs/installation.md) · [使用说明](docs/usage.md) · [体验案例](docs/example.md)
+[在线体验](http://methodatlas.64-90-4-239.sslip.io/) · [观看演示](docs/assets/methodatlas-demo.mp4) · [本地安装](docs/installation.md) · [使用说明](docs/usage.md) · [体验案例](docs/example.md)
 
 在线工作台设有登录入口，访问凭据由项目方单独提供。本地运行使用自己的模型连接。
 
