@@ -70,8 +70,23 @@ def main():
             assert item['proposals'][-1]['status']=='pending',item['proposals'][-1]
             assert len(item['versions'])==1
             accepted = service.writing.decide(project,aid,'edit','accept')
-            assert accepted['versions'][-1]['payload']['document'][1]['type']=='ul'
-            assert len(accepted['versions'])==2
+            assert accepted['draft']['payload']['document'][1]['type']=='ul'
+            assert len(accepted['versions'])==1
+            draft = accepted['draft']
+            service.writing.snapshot(project, aid, {'version_id': draft['id']})
+            service.writing.save_draft(project, aid, {'request_id':'later-draft','base_version_id':draft['id'],'title':'后续标题','document':draft['payload']['document']})
+            draft_fragment = {'artifact_id':aid,'version_id':draft['id'],'selection':{'anchor':{'path':[0,0],'offset':0},'focus':{'path':[0,0],'offset':3}},'text':'前😀'}
+            result = service.message(project,conversation,{'text':'解释草稿','client_message_id':'draft-snapshot','selected_fragments':[draft_fragment],'reference':{'artifact_id':aid,'version_id':draft['id']}},schedule=False)
+            draft_task = service.store.task(result['task_id'])
+            service.store.run("UPDATE tasks SET status='running' WHERE id=?", (draft_task['id'],))
+            assert draft_task['refs']['selected_fragments'][0]['text']=='前😀'
+            from .agent import ProjectTools
+            reader = ProjectTools(service.store,draft_task)
+            reader.set_scope(False)
+            assert reader.read_file(aid,draft['id'],project_wide=True)['payload']['document']==draft['payload']['document']
+            from .audit import baseline
+            assert baseline(reader)[0]['version_id']==draft['id']
+            assert len(service.writing.get(project,aid)['versions'])==1
             # Sending the old selected snapshot after editing still resolves its old version.
             body['client_message_id']='old-snapshot'
             result = service.message(project,conversation,body,schedule=False)

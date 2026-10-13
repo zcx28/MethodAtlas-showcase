@@ -1,9 +1,16 @@
 // Real local HTTP/UI, with failed requests intercepted only for recovery checks.
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
+const {spawn}=require('node:child_process');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const stopServer=require('./check-server.cjs');
 (async()=>{
- const base=process.env.METHODATLAS_SELECTION_URL||'http://127.0.0.1:8788';
- const browser=await chromium.launch({channel:'chrome',headless:true});
+ const root=path.resolve(__dirname,'..');
+ const data=fs.mkdtempSync(path.join(os.tmpdir(),'methodatlas-selection-'));
+ const server=process.env.METHODATLAS_SELECTION_URL ? null : spawn(process.env.PYTHON||path.join(root,process.platform==='win32'?'.research-deps/Scripts/python.exe':'.venv/bin/python'),['-u','-m','backend.app','--port','0','--data-dir',data,'--pdf-dir',path.join(data,'no-papers')],{cwd:root,env:{...process.env,PYTHONUTF8:'1',DEEPSEEK_API_KEY:''},windowsHide:true});
+ process.on('exit',()=>stopServer(server));
+ const base=process.env.METHODATLAS_SELECTION_URL||await stopServer.ready(server);
+ const browser=await chromium.launch({channel:'chromium',headless:true});
  const page=await browser.newPage({viewport:{width:1440,height:960}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  try{
@@ -25,6 +32,28 @@ const assert=require('node:assert/strict');
  await select('.writing-surface li','列表内容');assert.equal(await page.getByRole('button',{name:'编辑',exact:true}).isEnabled(),true);
  await page.getByRole('button',{name:'编辑',exact:true}).click();await page.getByLabel('描述编辑内容',{exact:true}).fill('不提交');await page.keyboard.press('Escape');
  assert.equal(await page.locator('.writing-inline-edit').count(),0);
+ const documentURL=`${base}/api/projects/${project}/documents/${saved.artifact_id}`;
+ const original=await (await page.request.get(documentURL)).json();let proposalAttempts=0;
+ const explanation='模型未返回完整修改内容，原文已保留。请明确替换要求后再次提交。';
+ await page.route('**/propose',async route=>{
+  proposalAttempts++;const request=route.request().postDataJSON();
+  await route.fulfill({json:{...original,proposals:[{id:request.request_id,status:'failed',request,error:'这次暂时无法生成，具体原因还需要排查。',explanation}]}});
+ });
+ await select('.writing-surface li','列表内容');await page.getByRole('button',{name:'编辑',exact:true}).click();
+ await page.getByLabel('描述编辑内容',{exact:true}).fill('请缩短这句话');
+ await page.getByRole('button',{name:'提交编辑',exact:true}).click();
+ await page.locator('.writing-proposal[data-state=failed]').waitFor();
+ assert.equal(await page.locator('.writing-error>p').innerText(),explanation);
+ assert.equal(await page.locator('#writing-edit-error').innerText(),explanation);
+ assert.equal(await page.getByRole('button',{name:'重试保存',exact:true}).count(),0,'proposal failure must not offer an unrelated save retry');
+ assert.equal(await page.getByLabel('描述编辑内容',{exact:true}).inputValue(),'请缩短这句话');
+ await page.getByRole('button',{name:'提交编辑',exact:true}).click();
+ await page.waitForResponse(r=>r.url().endsWith('/propose'));
+ assert.equal(proposalAttempts,2);
+ assert.deepEqual((await (await page.request.get(documentURL)).json()).versions,original.versions,'failed proposals must not alter saved manuscript');
+ await page.waitForFunction(()=>!document.querySelector('.writing-inline-edit button[type=submit]')?.disabled);
+ await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='描述编辑内容');
+ await page.keyboard.press('Escape');await page.locator('.writing-inline-edit').waitFor({state:'hidden'});await page.unroute('**/propose');
  await select('.writing-surface td','表格内容');assert.equal(await page.getByRole('button',{name:'编辑',exact:true}).isDisabled(),true);
  await page.getByRole('button',{name:'添加到对话',exact:true}).click();
  await select('.writing-equation','mc^2');assert.equal(await page.getByRole('button',{name:'编辑',exact:true}).isDisabled(),true);
@@ -82,5 +111,5 @@ const assert=require('node:assert/strict');
  assert.equal(await page.locator('#chat-input').inputValue(),'');
  assert.deepEqual(errors,[]);
  console.log('PASS: list actions, Escape, table/formula quote-only, fragment removal, failed send preserves old question and new draft after reload, storage failure, and conversation switch');
- }catch(e){await page.screenshot({path:'.check-data/selection-edge-failure.png'});throw e;}finally{await browser.close();}
+ }catch(e){fs.mkdirSync(path.join(root,'output/playwright'),{recursive:true});await page.screenshot({path:path.join(root,'output/playwright/selection-edge-failure.png')});throw e;}finally{await browser.close();stopServer(server);}
 })().catch(e=>{console.error(e);process.exitCode=1;});

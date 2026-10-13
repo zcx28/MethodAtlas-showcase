@@ -61,7 +61,7 @@ def read_figure(tools, paper_id, page, question, version_id=None, rect=None):
     image, provenance = extract_pdf_region(Path(paper['source_path']).read_bytes(), paper['sha256'], page, rect)
     pages = json.loads(paper['pages'])
     current = next(p for p in pages if p['page'] == page)
-    # Design limit: page-local context, at most 8k characters; larger context needs explicit text reads.
+    # page-local context, at most 8k characters; larger context needs explicit text reads.
     blocks = sorted(current.get('blocks', []), key=lambda b: abs(b['rect'][1] - provenance['rect'][1]) if b.get('rect') else 0)
     context, remaining = [], 8000
     for block in blocks:

@@ -36,6 +36,8 @@ def main():
         clock = [datetime.fromisoformat('2026-09-14T23:59:00+08:00')]
         progress.clock = lambda: clock[0]
         progress.record(project, {'request_id':'d1','kind':'decision','text':'采用按任务拆分的评估，旧结果保留。'})
+        store.run('INSERT INTO progress_events VALUES(?,?,?,?,?)', ('read-check',project,'research',clock[0].isoformat(),
+            json.dumps({'tool':'read_material','text':'RAW_PAPER_READ_CANARY '*2000,'arguments':{'paper_id':'paper-check'},'evidence':['fixed-read-source']})))
         other = store.create_project('隔离')
         # Catch-up starts at project creation, which must precede the simulated clock.
         store.run('UPDATE projects SET created=? WHERE id IN (?,?)', (clock[0].isoformat(), project, other))
@@ -52,8 +54,12 @@ def main():
                 assert not request.get('tools')
                 context = json.loads(next(m['content'] for m in reversed(request['messages']) if m['role']=='user'))
                 calls.append(context)
+                assert 'RAW_PAPER_READ_CANARY' not in json.dumps(context), 'digest repeated raw paper reads'
                 if behavior[0] == 'wait':
                     entered.set(); assert release.wait(30)
+                if behavior[0] == 'stop':
+                    task_id = store.one('SELECT task_id FROM progress_days WHERE project_id=? AND day=?', (project,'2026-09-14'))['task_id']
+                    store.run("UPDATE tasks SET status='stopped',revision=revision+1 WHERE id=?", (task_id,))
                 if 'known_reason' in context:
                     result = {'explanation':'这次没有取得完整内容，请调整整理范围后发送新请求。'}
                 else:
@@ -63,6 +69,10 @@ def main():
                         result['items'][0]['sources'] = ['foreign-project-event']
                     if behavior[0] == 'decision':
                         result['items'][0]['section'] = '关键决策'
+                    if behavior[0] == 'repair' and 'response_to_correct' not in context:
+                        result['items'][0]['section'] = '未在列表中的栏目'
+                    if behavior[0] == 'alias':
+                        result['items'][0]['section'] = '最重要发现'
                 chunk = {'id':'progress-check','object':'chat.completion.chunk','created':0,'model':request['model'],'choices':[{'index':0,'delta':{'role':'assistant','content':json.dumps(result,ensure_ascii=False)},'finish_reason':None}]}
                 end = {**chunk,'choices':[{'index':0,'delta':{},'finish_reason':'stop'}],'usage':{'prompt_tokens':100,'completion_tokens':20,'total_tokens':120}}
                 raw = ('data: '+json.dumps(chunk)+'\n\ndata: '+json.dumps(end)+'\n\ndata: [DONE]\n\n').encode()
@@ -81,10 +91,36 @@ def main():
             assert first['payload']['sources'] == ['d1']
             assert '## 原始依据' not in first['body'] and '#activity-' not in first['body']
             assert 'd1' in first['payload']['sources']
+            assert any(e['id']=='read-check' and 'RAW_PAPER_READ_CANARY' in e['data']['text'] for e in progress.events(project))
+            assert any(e['id']=='read-check' and json.loads(e['data'])['tool']=='read_material' for e in calls[0]['activities'])
             progress.generate(project)
             assert len(calls) == 1, 'repeated request invoked model'
+            behavior[0] = 'alias'
+            before = len(calls)
+            assert progress.generate(project,instruction='核对明确的栏目简称')['status'] == 'ready'
+            detail = progress.get(project,'2026-09-14')
+            assert len(calls) == before + 1 and '## 最重要的发现' in detail['proposal']['content']
+            assert detail['proposal']['sources'] == ['d1']
+            behavior[0] = 'repair'
+            before = len(calls)
+            assert progress.generate(project,instruction='核对栏目格式')['status'] == 'ready'
+            assert len(calls) == before + 2 and calls[-1]['format_error']
+            assert progress.get(project,'2026-09-14')['versions'][-1]['id'] == first['id']
+            behavior[0] = 'bad'
+            before = len(calls)
+            assert progress.generate(project,instruction='拒绝伪造依据')['status'] == 'failed'
+            attempts = [c for c in calls[before:] if 'known_reason' not in c]
+            assert len(attempts) == 2, 'format repair must be bounded'
+            assert progress.get(project,'2026-09-14')['versions'][-1]['id'] == first['id']
+            behavior[0] = 'stop'
+            assert progress.generate(project,instruction='执行中停止')['status'] == 'stopped'
+            stopped_id = store.one('SELECT task_id FROM progress_days WHERE project_id=? AND day=?', (project,'2026-09-14'))['task_id']
+            assert store.task(stopped_id)['status'] == 'stopped', 'late review failure revived a stopped run'
+            assert progress.get(project,'2026-09-14')['versions'][-1]['id'] == first['id']
+            behavior[0] = 'normal'
             progress.save(project,'2026-09-14',{'base_version_id':first['id'],'content':first['body']+'\n人工核对：尚需实验。'})
             manual = progress.get(project,'2026-09-14')['versions'][-1]
+            assert manual['payload']['highlights'][0] == next(line.strip('- ')[:300] for line in manual['body'].splitlines() if line.strip() and not line.startswith('#')), 'default date heading must preserve summary-title behavior'
             rejects(lambda: progress.save(project,'2026-09-14',{'base_version_id':first['id'],'content':'过期改动'}))
             assert progress.generate(project,instruction='进一步精简')['status'] == 'ready'
             item = progress.get(project,'2026-09-14')

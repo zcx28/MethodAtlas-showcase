@@ -69,11 +69,11 @@ def main():
                 assert len(attempts) == 2, 'one retry only; do not silently wait through five retries'
                 assert task['status'] == ('succeeded' if recovering else 'failed')
                 assert any(e['status'] == 'connection_retry' for e in task['events'])
-                assert 'llm/retry' in (service.store.root/'logs'/'errors.jsonl').read_text(), 'Recovered attempts still need diagnostics'
+                assert 'llm/retry' in (service.store.root/'logs'/'errors.jsonl').read_text(encoding='utf-8'), 'Recovered attempts still need diagnostics'
                 assert not task['tools'] and not task['files']
                 if not recovering:
                     assert task['error_info']['code'] in ('connection','timeout')
-                    assert task['error_info']['action'] == 'resume' and 'HTTP' not in task['error']
+                    assert task['error_info']['action'] == 'new_request' and 'HTTP' not in task['error']
             print('PASS: actual Harness bounded connection failure and recovery without research tools')
             idle = True
             attempts.clear()
@@ -83,7 +83,7 @@ def main():
             task = service.task_view(project,sent['task_id'])
             elapsed = time.monotonic()-started
             assert len(attempts) == 2 and task['status'] == 'failed' and elapsed < 27
-            assert '超时' in task['error']
+            assert task['error_info']['code'] == 'timeout', task['error_info']
             print(f'PASS: silent connection times out after one retry in {elapsed:.1f}s',flush=True)
             idle = False
             for failure_status, expected_code, count in [(401,'authentication',1),(402,'billing',1),(403,'authentication',1),(429,'rate_limit',2),(503,'unavailable',2)]:

@@ -1,6 +1,6 @@
 """Durable state and atomic promotion fences for the local research agent."""
 from __future__ import annotations
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import json
 import hashlib
 import re
@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from .pdf import PARSER_VERSION, read_pdf, read_pdf_bytes
+from .storage import atomic_write, lock_directory
 
 class StaleRun(Exception):
     pass
@@ -36,20 +37,30 @@ class Store:
     def __init__(self, path: Path):
         self.root = path.parent.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        self.lease = lock_directory(self.root)
+        self.lock = threading.RLock()
+        self.extraction_locks = {}
+        try:
+            self._open(path)
+        except BaseException:
+            if hasattr(self, 'db'):
+                self.db.close()
+            self.lease.close()
+            raise
+
+    def _open(self, path):
         existed = path.is_file()
         self.db = sqlite3.connect(path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.lock = threading.RLock()
-        self.extraction_locks = {}
         if existed and self.db.execute("PRAGMA user_version").fetchone()[0] < 6:
             backups = self.root / "backups"
             backups.mkdir(exist_ok=True)
-            with sqlite3.connect(backups / f"before-tasks-v6-{uuid.uuid4().hex}.sqlite3") as backup:
+            with closing(sqlite3.connect(backups / f"before-tasks-v6-{uuid.uuid4().hex}.sqlite3")) as backup:
                 self.db.backup(backup)
         if existed and not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='paper_extractions'").fetchone():
             backups = self.root / 'backups'
             backups.mkdir(exist_ok=True)
-            with sqlite3.connect(backups / f'before-research-cache-{uuid.uuid4().hex}.sqlite3') as backup:
+            with closing(sqlite3.connect(backups / f'before-research-cache-{uuid.uuid4().hex}.sqlite3')) as backup:
                 self.db.backup(backup)
         self._init()
 
@@ -81,7 +92,7 @@ class Store:
                     COMMIT;
                 """)
             for table, fields in {
-                "papers": {"source_kind":"TEXT NOT NULL DEFAULT 'local_pdf'", "external_id":"TEXT", "metadata":"TEXT NOT NULL DEFAULT '{}'", "availability":"TEXT NOT NULL DEFAULT '{}'"},
+                "papers": {"source_kind":"TEXT NOT NULL DEFAULT 'local_pdf'", "external_id":"TEXT", "metadata":"TEXT NOT NULL DEFAULT '{}'", "availability":"TEXT NOT NULL DEFAULT '{}'", "added_at":"TEXT NOT NULL DEFAULT ''"},
                 "tasks": {"revision":"INTEGER NOT NULL DEFAULT 0", "mode":"TEXT NOT NULL DEFAULT 'auto'", "kind":"TEXT NOT NULL DEFAULT 'research'", "scope_mode":"TEXT NOT NULL DEFAULT 'project'", "snapshot":"TEXT NOT NULL DEFAULT '[]'", "plan":"TEXT NOT NULL DEFAULT '[]'", "checkpoint":"TEXT NOT NULL DEFAULT '{}'", "evidence":"TEXT NOT NULL DEFAULT '[]'", "coverage":"TEXT NOT NULL DEFAULT '{}'", "refs":"TEXT NOT NULL DEFAULT '{}'", "blocked_reason":"TEXT"},
                 "artifact_versions": {"kind":"TEXT NOT NULL DEFAULT 'research'", "payload":"TEXT NOT NULL DEFAULT '{}'"},
                 "task_events": {"step_id":"TEXT"}
@@ -91,6 +102,10 @@ class Store:
                     if name not in existing:
                         self.db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
             self.db.executescript("""
+                UPDATE papers SET added_at=COALESCE((SELECT MIN(created) FROM paper_versions WHERE paper_id=papers.id),(SELECT created FROM projects WHERE id=papers.project_id),'') WHERE added_at='';
+                CREATE TRIGGER IF NOT EXISTS paper_added_at AFTER INSERT ON papers WHEN NEW.added_at='' BEGIN
+                    UPDATE papers SET added_at=strftime('%Y-%m-%dT%H:%M:%f+00:00','now') WHERE id=NEW.id;
+                END;
                 CREATE TABLE IF NOT EXISTS paper_extractions(project_id TEXT,version_id TEXT,policy INTEGER,body TEXT,next_offset INTEGER,complete INTEGER,PRIMARY KEY(project_id,version_id,policy));
                 CREATE TABLE IF NOT EXISTS claim_checks(project_id TEXT,cache_key TEXT,result TEXT,PRIMARY KEY(project_id,cache_key));
                 CREATE TABLE IF NOT EXISTS model_usage(task_id TEXT,call_id TEXT,role TEXT,model TEXT,usage TEXT,PRIMARY KEY(task_id,call_id));
@@ -104,6 +119,10 @@ class Store:
             self.db.executescript("""
                 CREATE TABLE IF NOT EXISTS task_waits(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,object_key TEXT NOT NULL,payload TEXT NOT NULL,response TEXT,created TEXT NOT NULL,UNIQUE(task_id,object_key));
                 CREATE TABLE IF NOT EXISTS file_commits(task_id TEXT NOT NULL,call_id TEXT NOT NULL,result TEXT NOT NULL,PRIMARY KEY(task_id,call_id));
+                CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversation_id);
+                CREATE INDEX IF NOT EXISTS messages_task ON messages(task_id);
+                CREATE INDEX IF NOT EXISTS tasks_project_status ON tasks(project_id,status);
+                CREATE INDEX IF NOT EXISTS versions_task ON artifact_versions(task_id);
             """)
             for row in self.db.execute("SELECT id FROM tasks WHERE status IN ('running','routing')").fetchall():
                 self.event(row['id'], 'interrupted', '服务重启，已保存进度；可主动继续')
@@ -170,6 +189,8 @@ class Store:
 
     def prior_messages(self, task):
         # Include the completed answer to earlier queued work even if it finished after enqueue.
+        if getattr(self, 'collaboration', None) and self.collaboration.online:
+            return [dict(row) for row in self.all('SELECT m.* FROM messages m LEFT JOIN tasks t ON t.id=m.task_id WHERE m.conversation_id=? AND (t.rowid<(SELECT rowid FROM tasks WHERE id=?) OR (t.id IS NULL AND m.created<?)) ORDER BY COALESCE(t.created,m.created),t.rowid,m.rowid', (task['conversation_id'], task['id'], task['created']))]
         return [dict(row) for row in self.all('SELECT m.* FROM messages m LEFT JOIN tasks t ON t.id=m.task_id WHERE m.conversation_id=? AND COALESCE(t.created,m.created)<? ORDER BY m.created', (task['conversation_id'],task['created']))]
 
     def task(self, task_id):
@@ -196,17 +217,20 @@ class Store:
         if not row:
             return None
         artifact = dict(row)
-        versions = self.all("SELECT * FROM artifact_versions WHERE artifact_id=? ORDER BY version_no", (artifact_id,))
+        versions = self.all("SELECT v.*,t.conversation_id FROM artifact_versions v LEFT JOIN tasks t ON t.id=v.task_id WHERE v.artifact_id=? ORDER BY v.version_no", (artifact_id,))
         artifact["versions"] = [{**dict(version), "citations": json.loads(version["citations"]), "materials": json.loads(version["materials"]), "payload": json.loads(version["payload"])} for version in versions]
         return artifact
 
     def close(self):
         with self.lock:
-            self.db.close()
+            try:
+                self.db.close()
+            finally:
+                self.lease.close()
 
     @contextmanager
     def transaction(self):
-        # Design limit: one local writer; split connections if measured concurrent throughput requires it.
+        # one local writer; split connections if measured concurrent throughput requires it.
         with self.lock:
             nested = self.db.in_transaction
             savepoint = 'sp_' + uuid.uuid4().hex
@@ -222,7 +246,17 @@ class Store:
                     self.db.rollback()
                 raise
 
-    def _store_pdf(self, project_id, raw, parsed, title, path_key, source_kind="local_pdf", external_id=None, metadata=None, target_paper_id=None):
+    def _pdf_duplicate(self, project_id, digest):
+        source = self.root / 'sources' / (digest + '.pdf')
+        if not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest() != digest:
+            return None
+        row = self.one(
+            "SELECT p.id FROM papers p JOIN paper_versions v ON v.paper_id=p.id WHERE p.project_id=? AND v.sha256=? ORDER BY v.created LIMIT 1",
+            (project_id, digest),
+        )
+        return row['id'] if row else None
+
+    def _store_pdf(self, project_id, raw, parsed, title, path_key, source_kind="local_pdf", external_id=None, metadata=None, target_paper_id=None, user=None):
         fulltext_source = (metadata or {}).get('fulltext_source')
         if not self.project(project_id):
             raise ValueError("项目不存在")
@@ -230,18 +264,16 @@ class Store:
             raise ValueError('PDF 在读取期间改变，请重新导入')
         source = self.root / "sources" / (parsed["sha256"] + ".pdf")
         source.parent.mkdir(exist_ok=True)
-        if not source.exists():
-            with source.open('xb') as output:
-                output.write(raw)
+        if not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest() != parsed['sha256']:
+            atomic_write(source, raw)
         conversion = parsed.get("conversion", {})
         status = "available" if conversion.get("status") == "parsed" else "partial" if conversion.get("status") == "partial" else "needs_ocr"
         with self.transaction() as db:
-            duplicate = db.execute(
-                "SELECT p.* FROM papers p JOIN paper_versions v ON v.paper_id=p.id WHERE p.project_id=? AND v.sha256=? ORDER BY v.created LIMIT 1",
-                (project_id, parsed["sha256"]),
-            ).fetchone()
+            if user:
+                self.collaboration.project(user, project_id, write=True)
+            duplicate = self._pdf_duplicate(project_id, parsed['sha256'])
             if duplicate and not target_paper_id:
-                return duplicate["id"]
+                return duplicate
             paper = None
             if target_paper_id:
                 paper = db.execute("SELECT * FROM papers WHERE project_id=? AND id=?", (project_id, target_paper_id)).fetchone()
@@ -289,21 +321,33 @@ class Store:
                 "UPDATE papers SET title=?,path=?,current_version_id=?,status=CASE WHEN status='removed' THEN status ELSE ? END,source_kind=?,external_id=COALESCE(?,external_id),metadata=?,availability=? WHERE id=?",
                 (title, path_key, version_id, status, source_kind, external_id, json_text(metadata or {}), json_text(availability), paper_id),
             )
+            if user and not version:
+                self.collaboration.paper_event(user, project_id, paper_id, version_id)
         return paper_id
 
     def import_pdf(self, project_id, path, title=None):
-        parsed = read_pdf(path)
         raw = path.read_bytes()
+        duplicate = self._pdf_duplicate(project_id, hashlib.sha256(raw).hexdigest())
+        if duplicate:
+            return duplicate
+        parsed = read_pdf(path)
         return self._store_pdf(project_id, raw, parsed, title or path.stem, str(path.resolve()))
 
-    def import_pdf_bytes(self, project_id, raw, title, source_kind="uploaded_pdf", external_id=None, metadata=None, target_paper_id=None):
+    def import_pdf_bytes(self, project_id, raw, title, source_kind="uploaded_pdf", external_id=None, metadata=None, target_paper_id=None, user=None):
+        if user:
+            self.collaboration.project(user, project_id, write=True)
         if not isinstance(title, str) or not title.strip() or len(title) > 300:
             raise ValueError("PDF 标题无效")
+        duplicate = None if target_paper_id else self._pdf_duplicate(project_id, hashlib.sha256(raw).hexdigest())
+        if duplicate:
+            return duplicate
         parsed = read_pdf_bytes(raw)
         path_key = f"source:{source_kind}:{external_id or parsed['sha256']}"
-        return self._store_pdf(project_id, raw, parsed, title.strip(), path_key, source_kind, external_id, metadata, target_paper_id)
+        return self._store_pdf(project_id, raw, parsed, title.strip(), path_key, source_kind, external_id, metadata, target_paper_id, user=user)
 
-    def paste(self, project_id, title, text):
+    def paste(self, project_id, title, text, user=None):
+        if user:
+            self.collaboration.project(user, project_id, write=True)
         if not self.project(project_id) or not isinstance(text, str) or not text.strip() or len(text) > 200000:
             raise ValueError("项目或文字材料无效（最多 200000 字符）")
         if not isinstance(title, str) or not title.strip() or len(title) > 300:
@@ -331,18 +375,30 @@ class Store:
         pages = [{"page": 1, "text": text, "blocks": [{"block": 0, "start": 0, "end": len(text), "text": text, "rect": None}], "layout":layout, "conversion":{"source":"paste", "reliable":True, "warning":None}}]
         availability = {"metadata":"available", "abstract":"missing", "fulltext":"provided", "parse":"parsed", "conversion":{"status":"parsed", "readable_pages":1, "fallback_pages":[], "ocr_pages":[], "parser":"paste-v2"}}
         with self.transaction() as db:
+            if user:
+                self.collaboration.project(user, project_id, write=True)
             db.execute("INSERT INTO papers(id,project_id,title,path,current_version_id,selected,status,source_kind,metadata,availability) VALUES(?,?,?,?,?,0,'available','text',?,?)", (paper_id,project_id,title,"paste:" + paper_id,version_id,json_text({"source":"paste","title":title}),json_text(availability)))
             db.execute("INSERT INTO paper_versions VALUES(?,?,?,?,?,?,?,?)", (version_id,paper_id,digest,1,json_text(pages),now(),"paste-v2",None))
+            if user:
+                self.collaboration.paper_event(user, project_id, paper_id, version_id)
         return paper_id
 
     def citation(self, project_id, citation_id, conversation_id=None):
-        citation_id = canonical_citation_id(citation_id)
-        row = self.one("SELECT e.*,p.title FROM evidence e JOIN papers p ON p.id=e.paper_id AND p.project_id=e.project_id JOIN paper_versions v ON v.id=e.paper_version_id AND v.paper_id=p.id WHERE e.project_id=? AND e.id=?", (project_id,citation_id))
-        if not row or conversation_id and row["conversation_id"] != conversation_id:
+        return self.citations(project_id, [citation_id], conversation_id)[0]
+
+    def citations(self, project_id, citation_ids, conversation_id=None):
+        ids = [canonical_citation_id(value) for value in citation_ids]
+        if not ids:
+            return []
+        rows = self.all("SELECT e.*,p.title FROM json_each(?) selected JOIN evidence e ON e.id=selected.value JOIN papers p ON p.id=e.paper_id AND p.project_id=e.project_id JOIN paper_versions v ON v.id=e.paper_version_id AND v.paper_id=p.id WHERE e.project_id=? AND (? IS NULL OR e.conversation_id=?)", (json_text(ids), project_id, conversation_id, conversation_id))
+        found = {}
+        for row in rows:
+            citation = dict(row)
+            location = json.loads(citation.pop('location'))
+            found[citation['id']] = {**citation, **location}
+        if any(ident not in found for ident in ids):
             raise ValueError("引用不属于当前项目或对话")
-        citation = dict(row)
-        location = json.loads(citation.pop('location'))
-        return {**citation, **location}
+        return [found[ident] for ident in ids]
 
     def reading_history(self, conversation_id):
         return [dict(row) for row in self.all("SELECT r.*,p.title FROM reads r JOIN papers p ON p.id=r.paper_id WHERE r.conversation_id=? AND p.path NOT LIKE 'paste:%' ORDER BY r.created", (conversation_id,))]
@@ -377,6 +433,8 @@ class Store:
         row = self.one("SELECT status,revision FROM tasks WHERE id=?", (task_id,))
         if not row or row["revision"] != revision or row["status"] not in ("running","routing"):
             raise StaleRun()
+        if getattr(self, 'collaboration', None):
+            self.collaboration.execution(self.task(task_id))
 
     def update_active(self, task_id, revision, **fields):
         allowed = {"status","mode","kind","scope_mode","snapshot","plan","checkpoint","evidence","coverage","blocked_reason","error","refs"}

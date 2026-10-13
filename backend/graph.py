@@ -123,10 +123,12 @@ def preview_graph(content):
     return re.sub(r'(<script nonce="[^"]+">)\s*// Host-only adapter\.[\s\S]*?</script>', lambda match: match[1] + Path(__file__).with_name('graph.js').read_text('utf-8') + '</script>', content, count=1)
 
 
-def restore_graph(service, project, artifact_id, request):
+def restore_graph(service, project, artifact_id, request, user=None):
     object_fields(request, ('version_id', 'base_version_id'))
     store = service.store
     with store.transaction() as db:
+        if user:
+            service.collaboration.artifact(user, project, artifact_id, write=True)
         artifact = store.artifact(project, artifact_id)
         if not artifact or artifact['kind'] != 'graph':
             raise ValueError('图谱不属于当前项目')
@@ -141,7 +143,7 @@ def restore_graph(service, project, artifact_id, request):
         service.file_path(project, source)  # Verify saved file and checksum before promotion.
         version_id = new_id('artifact_version')
         task = service.writing.task(project, '恢复论文关系图谱 v' + str(source['version_no']),
-                                    conversation=store.task(source['task_id'])['conversation_id'])
+                                    conversation=store.task(source['task_id'])['conversation_id'] if not user else None, user=user, artifact=artifact_id)
         payload = {**source['payload'], 'base_version_id': latest['id'], 'restored_from': source['id']}
         db.execute('INSERT INTO artifact_versions(id,artifact_id,task_id,version_no,title,body,citations,materials,created,kind,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
                    (version_id, artifact_id, task['id'], latest['version_no'] + 1, source['title'], source['body'],

@@ -5,6 +5,7 @@ import json
 import re
 import statistics
 import math
+import os
 from pathlib import Path
 
 import pymupdf
@@ -18,7 +19,7 @@ except ImportError:  # The base parser remains a supported recovery path.
 LAYOUT_VERSION = getattr(pymupdf4llm, "version", "unavailable") if pymupdf4llm else "unavailable"
 # Bumping the trailing revision makes previously parsed papers re-parse on next import, instead of
 # silently serving text from the older parser (v4 glued spans together and lost the spaces).
-PARSER_VERSION = f"pymupdf-{pymupdf.VersionBind}-layout-{LAYOUT_VERSION}-responsive-v5"
+PARSER_VERSION = f"pymupdf-{pymupdf.VersionBind}-layout-{LAYOUT_VERSION}-responsive-v9"
 MIN_NATIVE_TEXT = 24
 MATH_RE = re.compile(r"[∑∫√≈≠≤≥∞∂∆∇α-ωΑ-Ω]|\b(?:sin|cos|log|exp)\s*\(", re.I)
 
@@ -161,6 +162,17 @@ def _text_blocks(page, page_dict: dict, source: str) -> tuple[list[dict], list[d
     return evidence, layout, sizes
 
 
+TABLE_WARNING = '表格的行列或数值未能可靠转换，请查看原表图像；不要从转换文本推断数值。'
+
+
+def _uncertain_table(rows) -> bool:
+    # conservative extraction guard, not a table recognizer. Keep ambiguous
+    # multiline numeric cells as source pixels until a geometry-aware extractor is available.
+    return any(re.search(r'(?:^|\s)\.(?:\s|$)', cell)
+               or sum(bool(re.search(r'\d', line)) for line in cell.splitlines()) > 1
+               for row in rows for cell in row)
+
+
 def _table_layout(page) -> tuple[list[dict], list[list[float]]]:
     output, rectangles = [], []
     try:
@@ -176,7 +188,9 @@ def _table_layout(page) -> tuple[list[dict], list[list[float]]]:
             continue
         rect = _page_rect(page, table.bbox)
         rectangles.append(rect)
-        output.append({"kind": "table", "rows": rows, "rect": rect, "source": "native"})
+        output.append({"kind": "image", "rect": rect, "source": "original", "warning": TABLE_WARNING}
+                      if _uncertain_table(rows) else
+                      {"kind": "table", "rows": rows, "rect": rect, "source": "native"})
     return output, rectangles
 
 
@@ -199,9 +213,10 @@ def _model_layout(page, model_page: dict, tables: list[dict], table_rects: list[
         if _inside(rect, table_rects) and "table" not in boxclass:
             continue
         table = next((item for key, item in table_by_rect.items() if _inside(rect, [list(key)]) or _inside(list(key), [rect])), None)
-        if "table" in boxclass and table:
+        if "table" in boxclass:
+            table = table or {"kind":"image", "rect":rect, "source":"original", "warning":TABLE_WARNING}
             layout.append({**table, "_order": order})
-            text = "\n".join("\t".join(row) for row in table["rows"])
+            text = table.get('warning') or "\n".join("\t".join(row) for row in table["rows"])
         elif any(name in boxclass for name in ("picture", "image", "figure", "chart")):
             layout.append({"kind":"image", "rect":rect, "source":"original", "_order":order})
             text = ""
@@ -274,24 +289,67 @@ def _parse_pdf(raw: bytes) -> dict:
                 model_pages = []
         for number, page in enumerate(reader, 1):
             native = page.get_text("text", sort=True).strip()
-            source, warning, textpage = "native", None, None
+            source, warning, ocr_layout = "native", None, None
             if len(native) < MIN_NATIVE_TEXT:
                 try:
-                    textpage = page.get_textpage_ocr(flags=pymupdf.TEXTFLAGS_DICT, full=True)
+                    local = Path(os.getenv("LOCALAPPDATA", str(Path.home() / ".local/share"))) / "MethodAtlas/tessdata"
+                    tessdata = Path(pymupdf.get_tessdata(os.getenv("TESSDATA_PREFIX") or (str(local) if local.is_dir() else None)))
+                    languages = [lang for lang in ("eng", "chi_sim", "chi_tra") if (tessdata / (lang + ".traineddata")).is_file()]
+                    if not languages:
+                        raise RuntimeError("No supported OCR language data")
+                    ocr_pdf = page.get_pixmap(dpi=150).pdfocr_tobytes(language="+".join(languages), tessdata=str(tessdata))
+                    with pymupdf.open(stream=ocr_pdf, filetype="pdf") as recognized:
+                        ocr_dict = recognized[0].get_text("dict", sort=True)
+                        if pymupdf4llm:
+                            try:
+                                ocr_model = json.loads(pymupdf4llm.to_json(recognized, force_text=True, use_ocr=False))["pages"][0]
+                                ocr_layout = _model_layout(recognized[0], ocr_model, [], [])
+                            except Exception:
+                                pass
+                        if not ocr_layout or not ocr_layout[0]:
+                            ocr_layout = _text_blocks(recognized[0], ocr_dict, "ocr")
+                            warning = "OCR 文字已识别，但阅读顺序未能解析；请核对原 PDF 中的分栏和数值归属。"
                     source = "ocr"
+                    # flag coarse full-page scans; confidence scoring needs an OCR engine that exposes it.
+                    for image in page.get_image_info():
+                        rect = pymupdf.Rect(image["bbox"])
+                        if rect.width > 0 and rect.height > 0 and rect.get_area() >= page.rect.get_area() * .5 and min(image["width"] / rect.width, image["height"] / rect.height) * 72 < 100:
+                            warning = "扫描页清晰度较低，OCR 可能误识别文字或混合分栏；请对照原 PDF 核对数值与归属，或上传更清晰的版本。"
+                            break
+                    if "chi_sim" not in languages and "chi_tra" not in languages:
+                        warning = "当前 OCR 仅支持英语，中文扫描页可能识别为乱码；请核对原 PDF，安装中文 OCR 语言包后重新解析。"
                 except Exception:
                     warning = "该页没有可靠文本，OCR 不可用；阅读器保留原页图像。"
             tables, table_rects = _table_layout(page) if source == "native" else ([], [])
-            if source == "native" and number <= len(model_pages):
+            if source == "ocr":
+                evidence, layout, sizes = ocr_layout
+            elif source == "native" and number <= len(model_pages):
                 evidence, layout, sizes = _model_layout(page, model_pages[number - 1], tables, table_rects)
             else:
-                page_dict = page.get_text("dict", sort=True, textpage=textpage)
+                page_dict = page.get_text("dict", sort=True)
                 evidence, layout, sizes = _text_blocks(page, page_dict, source)
                 layout.extend(tables)
             if source == "native" and not evidence:
                 page_dict = page.get_text("dict", sort=True)
                 evidence, layout, sizes = _text_blocks(page, page_dict, source)
                 layout.extend(tables)
+            # Native fallback and model output share the same safety boundary. Never
+            # retain corrupted table digits in the evidence stream while hiding them in UI.
+            uncertain = [item for item in layout + tables if item.get('warning') == TABLE_WARNING]
+            if uncertain:
+                warning = TABLE_WARNING
+                regions = [item['rect'] for item in uncertain]
+                evidence = [block for block in evidence if not _inside(block['rect'], regions)]
+                layout = [item for item in layout if item.get('warning') or not _inside(item['rect'], regions)]
+                for item in uncertain:
+                    if not any(block['rect'] == item['rect'] for block in evidence):
+                        evidence.append({'text': TABLE_WARNING, 'rect': item['rect']})
+                    if not any(block['rect'] == item['rect'] and block.get('warning') for block in layout):
+                        layout.append(item)
+                offset = 0
+                for index, block in enumerate(evidence):
+                    block.update(block=index, start=offset, end=offset + len(block['text']))
+                    offset = block['end'] + 1
             readable = any(block["text"].strip() for block in evidence)
             if not readable:
                 layout = [{"kind": "page_image", "rect": [0.0, 0.0, float(page.rect.width), float(page.rect.height)], "source": "original"}]
@@ -304,7 +362,7 @@ def _parse_pdf(raw: bytes) -> dict:
                 "width": page.rect.width,
                 "height": page.rect.height,
                 "blocks": evidence,
-                "conversion": {"source": source if readable else "image_fallback", "reliable": readable, "warning": warning},
+                "conversion": {"source": source if readable else "image_fallback", "reliable": readable and not warning, "warning": warning},
             })
     median_size = statistics.median(all_sizes) if all_sizes else 11.0
     for page, (layout, table_rects) in zip(pages, pending):
@@ -315,7 +373,7 @@ def _parse_pdf(raw: bytes) -> dict:
         "page_count": len(pages),
         "pages": pages,
         "conversion": {
-            "status": "parsed" if readable_pages == len(pages) else "partial" if readable_pages else "image_only",
+            "status": "parsed" if all(page['conversion']['reliable'] for page in pages) else "partial" if readable_pages else "image_only",
             "readable_pages": readable_pages,
             "fallback_pages": [page["page"] for page in pages if not page["conversion"]["reliable"]],
             "ocr_pages": [page["page"] for page in pages if page["conversion"]["source"] == "ocr"],

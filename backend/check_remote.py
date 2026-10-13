@@ -25,10 +25,18 @@ def fixture(folder):
     if os.name == 'nt':
         compiler = shutil.which('gcc')
         if not compiler:
-            raise RuntimeError('Windows SSH peer fixture needs the installed gcc')
-        source = folder / 'ssh.c'
-        source.write_text('#include <process.h>\n#include <stdlib.h>\nint main(int n,char **a){char **v=calloc(n+3,sizeof(char*));v[0]=getenv("REMOTE_FIXTURE_PYTHON");v[1]=getenv("REMOTE_FIXTURE_SCRIPT");for(int i=1;i<n;i++)v[i+1]=a[i];return _spawnv(_P_WAIT,v[0],(const char* const*)v);}\n')
-        subprocess.run([compiler, str(source), '-o', str(folder / 'ssh.exe')], check=True, capture_output=True)
+            compiler = Path(os.environ.get('WINDIR', r'C:\Windows')) / 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+            if not compiler.is_file():
+                raise RuntimeError('Windows SSH fixture needs gcc or the installed .NET compiler')
+            source = folder / 'ssh.cs'
+            source.write_text(r'''using System;using System.Diagnostics;using System.Linq;using System.Text.RegularExpressions;
+class Peer { static string Q(string x) {return "\""+Regex.Replace(x,@"(\\*)\"", "$1$1\\\"").TrimEnd('\\')+new string('\\',x.Length-x.TrimEnd('\\').Length)*2+"\"";}
+static int Main(string[] args) {var p=new Process();p.StartInfo=new ProcessStartInfo(Environment.GetEnvironmentVariable("REMOTE_FIXTURE_PYTHON"),String.Join(" ",new[]{Environment.GetEnvironmentVariable("REMOTE_FIXTURE_SCRIPT")}.Concat(args).Select(Q)));p.StartInfo.UseShellExecute=false;p.Start();p.WaitForExit();return p.ExitCode;} }'''.replace("new string('\\',x.Length-x.TrimEnd('\\').Length)*2", "new string('\\',2*(x.Length-x.TrimEnd('\\').Length))"))
+            subprocess.run([str(compiler), '/nologo', '/out:' + str(folder / 'ssh.exe'), str(source)],check=True,capture_output=True)
+        else:
+            source = folder / 'ssh.c'
+            source.write_text('#include <process.h>\n#include <stdlib.h>\nint main(int n,char **a){char **v=calloc(n+3,sizeof(char*));v[0]=getenv("REMOTE_FIXTURE_PYTHON");v[1]=getenv("REMOTE_FIXTURE_SCRIPT");for(int i=1;i<n;i++)v[i+1]=a[i];return _spawnv(_P_WAIT,v[0],(const char* const*)v);}\n')
+            subprocess.run([compiler, str(source), '-o', str(folder / 'ssh.exe')], check=True, capture_output=True)
     else:
         target = folder / 'ssh'
         target.write_text(f'#!{sys.executable}\nimport runpy\nrunpy.run_path({str(script)!r},run_name="__main__")\n')
@@ -71,14 +79,41 @@ def public_flow(folder):
         result = api(path+'/result', {'path':'result.csv'})
         assert result['text'] == 'launches,score\n1,0.75\n', 'ambiguous retry launched a duplicate'
         log = api(path+'/log', {'offset':0})
-        assert log['next_offset'] == 65536 and log['size'] > 65536
-        rest = api(path+'/log', {'offset':log['next_offset']})
-        assert rest['next_offset'] == rest['size']
+        assert 65532 <= log['next_offset'] <= 65536 and log['size'] > 65536
+        import base64, hashlib
+        for suffix, extra in [('/log',{}),('/result',{'path':'unicode.txt'})]:
+            offset, parts, raw_parts = 0, [], []
+            while True:
+                chunk = api(path+suffix, {**extra,'offset':offset})
+                raw = base64.b64decode(chunk['data'])
+                assert hashlib.sha256(raw).hexdigest() == chunk['sha256_chunk']
+                assert chunk['next_offset'] == offset + len(raw) and len(raw) <= 65536
+                parts.append(chunk['text']);raw_parts.append(raw);offset=chunk['next_offset']
+                if offset == chunk['size']:break
+                assert raw, 'nonterminal read made no progress'
+            expected = '中文日志🙂\n' * 10000
+            assert ''.join(parts) == expected, 'UTF-8 character corrupted across chunks'
+            assert b''.join(raw_parts) == expected.encode()
+        unicode_result=api(path+'/fetch',{'path':'unicode.txt'})
+        with urlopen(base+prefix+'/results/'+unicode_result['id']) as response:
+            assert response.read() == expected.encode(), 'full result bytes changed'
+        # A running process may append only part of a multibyte character so far.
+        (folder/'log-bytes').write_bytes(b'start ' + '🙂'.encode()[:2])
+        partial = api(path+'/log',{'offset':0})
+        assert partial['text'] == 'start ' and partial['next_offset'] == 6
+        (folder/'log-bytes').write_bytes('start 🙂\n'.encode())
+        continued = api(path+'/log',{'offset':partial['next_offset']})
+        assert partial['text'] + continued['text'] == 'start 🙂\n'
+        (folder/'log-bytes').unlink()
         (folder / 'offline').touch()
         assert api(path+'/observe', {})['status'] == 'unknown'
         (folder / 'offline').unlink()
         (folder / 'complete').touch()
         assert api(path+'/observe', {})['status'] == 'succeeded'
+        (folder/'log-bytes').write_bytes(b'end\xe4')
+        terminal_log = api(path+'/log',{'offset':0})
+        assert terminal_log['text'] == 'end\ufffd' and terminal_log['next_offset'] == 4
+        (folder/'log-bytes').unlink()
         fetched = api(path+'/fetch', {'path':'result.csv'})
         assert fetched['paper_id'] and fetched['version_id']
         assert api(path+'/fetch', {'path':'result.csv'})['id'] == fetched['id']
@@ -110,7 +145,7 @@ def public_flow(folder):
         assert not any(t[0] in ('confirm_experiment','cancel_experiment') for t in tools.definitions)
         service.remote.close()
         restarted = Remote(service.store)
-        assert restarted.get(project,draft['id'])['results'][0]['sha256'] == fetched['sha256']
+        assert next(r for r in restarted.get(project,draft['id'])['results'] if r['id']==fetched['id'])['sha256'] == fetched['sha256']
         assert restarted.observe(project,draft['id'])['status'] == 'succeeded'
         analyze_and_report(service, project, draft['id'], api, fetched['paper_id'])
         (folder / 'complete').unlink()
@@ -242,7 +277,7 @@ def main():
         server['name'] = 'Edited'
         remote.servers('save', {k: server[k] for k in ('id', 'name', 'host', 'port', 'username')})
         rejects(lambda: remote.confirm(project, draft['id'], {'digest': draft['digest']}))
-        store.db.close()
+        store.close()
     print('PASS remote configuration, authorization and project isolation')
     saved = dict(os.environ)
     try:

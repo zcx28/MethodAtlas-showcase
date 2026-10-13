@@ -1,24 +1,32 @@
 # 运行检查
 
-安装依赖并构建前端后，在仓库根目录运行：
+先完成依赖安装与编辑器构建。在仓库根目录执行：
 
 ```sh
 .venv/bin/python -m compileall -q backend
-npm run check:writing
-.venv/bin/python -m backend.check
-.venv/bin/python -m backend.check_sources
-.venv/bin/python -m backend.check_tasks
-.venv/bin/python -m backend.check_exports
-.venv/bin/python -m backend.check_writing
-.venv/bin/python -m backend.check_errors
-.venv/bin/python -m backend.check_search_recovery
-PYTHON="$PWD/.venv/bin/python" node prototype/check.cjs
+npm run build:writing
+npm run check
+.venv/bin/python -m backend.check_collaboration
+.venv/bin/python -m backend.check_reader_document
+.venv/bin/python -m backend.check_writing_drafts
+.venv/bin/python -m backend.check_layout
+npx playwright install chromium
+PYTHON="$PWD/.venv/bin/python" npm run check:ai-dialog
 ```
 
-Windows 将 Python 路径替换为 `.\.venv\Scripts\python.exe`；最后一条先设置 `$env:PYTHON` 再运行 Node。
+Windows 使用 `.\.venv\Scripts\python.exe`；浏览器检查前设置 `$env:PYTHON`。浏览器已安装在自定义位置时，可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` 指定 Chromium 可执行文件。
 
-默认后端检查使用本地受控模型响应，不消耗真实模型额度。未安装 Playwright 时，浏览器检查只验证 API 启动，不代表 UI 交互已验证。带 `--real` 或 `live` 的其他检查需要额外模型、网络或指定资料，可能产生费用，不属于上述基础检查。
+## 本次检查范围
 
-## 当前检查限制
+2026-10-13 展示版本在 Python 3.12 与 Node.js 24 环境完成以下检查：
 
-`backend.check` 的受控模型局部修正场景，以及 `backend.check_sources` 的宽范围引用断言，当前存在失败；不能把整套检查视为全部通过。两项检查保留以便复现。它们不影响基础安装启动，但涉及的研究修订与引用边界仍需进一步验证。
+- 编辑器构建、结构化修订、引用编号、对话队列与历史响应边界。
+- 本地受控认证服务下的真实 HTTP/SQLite：登录、CSRF、成员邀请、撤销权限、团队模型隔离、共享任务、评论、私人内容、活动与通知。
+- 连续原文阅读、跨页与多栏定位、公式后续文字、固定资料版本及图像片段。
+- 草稿自动保存、手动存档去重、历史恢复、保存冲突与访问隔离。
+- 两种实际 Typst 模板、正文保留、布局计划验证与确认流程。此项需要 Typst CLI 和字体。
+- 浮动对话的选区、历史、窗口关闭与导航、草稿、首次发送建会话、引用版本及重复请求处理。
+
+检查使用独立临时数据与受控外部响应，不调用真实模型，不向真实邮箱发送邮件。展示截图也使用独立演示数据。
+
+上述结果不等于所有功能或所有平台均已验证。真实模型回答、外网检索、邮件投递、远端 GPU 实验与并发容量需在对应环境单独验收。仓库保留其他功能检查供复现，但本次未全部重跑；带 `--real` 或 `live` 的入口可能访问网络、资料或产生模型费用。

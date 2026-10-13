@@ -3,12 +3,12 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 import re
 import shlex
 import sys
 import threading
 import time
-from datetime import date
 from types import SimpleNamespace
 from .errors import failure_message
 
@@ -23,13 +23,16 @@ def model_config():
     model = chosen['model'] if chosen else os.getenv('DEEPSEEK_MODEL','deepseek-v4-pro')
     provider = 'openai' if chosen else 'deepseek'
     config = {key:provider+':'+model for key in ('FAST_LLM','SMART_LLM','STRATEGIC_LLM')}
-    config['LLM_KWARGS'] = {'timeout':90,'max_retries':1}
+    config['LLM_KWARGS'] = {'timeout':90,'max_retries':1,'streaming':True}
     if chosen:
         # GPT Researcher gives environment variables precedence over its JSON file.
         for key in (*config,'LLM_PROVIDER','FAST_LLM_MODEL','SMART_LLM_MODEL','REASONING_EFFORT'):
             os.environ.pop(key,None)
         os.environ.update(OPENAI_API_KEY=chosen['api_key'] or 'local-no-key',OPENAI_BASE_URL=chosen['base_url'])
         config['LLM_KWARGS']['openai_api_base'] = chosen['base_url']
+        # DeepSeek streaming also survives the quota gateway's local URL.
+        if chosen['protocol'] == 'deepseek' or urlsplit(chosen['base_url']).hostname == 'copilot.tencent.com':
+            config['LLM_KWARGS']['streaming'] = True
         if chosen['selected_effort'] != 'off':
             os.environ['REASONING_EFFORT'] = chosen['selected_effort']
             config['LLM_KWARGS']['reasoning_effort'] = chosen['selected_effort']
@@ -82,7 +85,6 @@ async def run(query, destination, bounded=False, quick=None):
         if url != OpenAlexSearch.BASE_URL:
             return original_get(url, **kwargs)
         record = {'source':'openalex','query':kwargs.get('params', {}).get('search', '')}
-        kwargs.setdefault('params', {})['filter'] = 'to_publication_date:' + date.today().isoformat()
         if quick and quick.get('from_date'):
             kwargs['params']['filter'] = f"from_publication_date:{quick['from_date']},to_publication_date:{quick['to_date']}"
             kwargs['params']['per_page'] = quick['max_results']

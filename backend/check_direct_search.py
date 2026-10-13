@@ -49,6 +49,18 @@ def check():
             assert store.task(enhanced)['status']=='succeeded',store.task(enhanced)['error']
             assert model.call_count==1
             assert store.task_view(enhanced)['waits'][0]['payload']['reasons_enhanced']
+        degraded=service.message(p,c,{'text':'找1篇 diffusion policy 论文','client_message_id':'degraded'})['task_id']
+        def partial_fetch(source,*args):
+            if source=='semantic_scholar':
+                from urllib.error import HTTPError
+                raise HTTPError('https://example.org',406,'Not Acceptable',{},None)
+            return [paper],False
+        with patch('backend.direct_search.fetch',side_effect=partial_fetch),patch.object(service.research,'complete',side_effect=AssertionError('No model needed')):
+            service.route(degraded);service.research.run(degraded)
+            view=store.task_view(degraded)
+            assert view['status']=='succeeded' and view['waits'][0]['payload']['recommendation']['papers']
+            assert any('服务暂时不可用' in gap for gap in view['refs']['partial_gaps']),view['refs']
+            assert not store.papers(p),'Partial source failure must not auto-import results'
         service.close()
     print('PASS direct search: zero model, progressive source delivery, dedup, no automatic import')
 

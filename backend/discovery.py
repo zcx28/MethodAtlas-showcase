@@ -7,7 +7,6 @@ import re
 import subprocess
 import sys
 import time
-from datetime import date
 
 from . import literature
 from .state import StaleRun, json_text, new_id, now
@@ -115,7 +114,7 @@ def identities(paper):
 def same_paper(left, right):
     if identities(left) & identities(right):
         return True
-    # Design limit: exact title + author only; changed titles need a DOI/arXiv link.
+    # exact title + author only; changed titles need a DOI/arXiv link.
     title = lambda p: re.sub(r'\W+', '', p.get('title', '').casefold())
     authors = lambda p: {re.sub(r'\W+', '', a.casefold()) for a in p.get('authors', [])}
     return bool(title(left) and title(left) == title(right) and authors(left) & authors(right))
@@ -131,12 +130,6 @@ def merge_candidates(store, project, candidates):
     groups = []
     for item in candidates:
         if not item.get('title') or not item.get('external_id'):
-            continue
-        # Indexes include embargoed/future records and supporting datasets.
-        published = str(item.get('published') or '')[:10]
-        if published and published > date.today().isoformat():
-            continue
-        if item.get('publication_type') in {'dataset', 'software', 'paratext', 'component', 'supplementary-materials'}:
             continue
         matches = [g for g in groups if any(same_paper(item,v) for v in g['versions'])]
         group = matches[0] if matches else None
@@ -188,13 +181,18 @@ def discover(query, store, task, bounded=False, *, quick=None):
             if quick is not None:
                 timeout = min(timeout, quick['timeout'])
             env = os.environ.copy()
+            budget_token = None
             if quick is None and hasattr(store, 'model_settings'):
                 from .settings import effort_for
                 config, options = store.model_settings.for_task(task)
-                env.update(METHODATLAS_MODEL_CONFIG=json_text({**config,'selected_effort':effort_for(config,options,'deep-research')}))
-            process = subprocess.Popen([os.getenv('PAPER_SEARCH_PYTHON',sys.executable),'-m','backend.discovery_worker',query,str(result_path), *(['--bounded'] if bounded else []), *(['--quick',json_text(quick)] if quick is not None else [])], stdout=log, stderr=log, env=env,
-                                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+                effort = effort_for(config,options,'deep-research')
+                if getattr(getattr(store,'collaboration',None), 'online', False):
+                    config, budget_token = store.model_settings.research.model_gateway.bind(config, task)
+                env.update(METHODATLAS_MODEL_CONFIG=json_text({**config,'selected_effort':effort}))
+            process = None
             try:
+                process = subprocess.Popen([os.getenv('PAPER_SEARCH_PYTHON',sys.executable),'-m','backend.discovery_worker',query,str(result_path), *(['--bounded'] if bounded else []), *(['--quick',json_text(quick)] if quick is not None else [])], stdout=log, stderr=log, env=env,
+                                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
                 while process.poll() is None:
                     store.assert_active(task['id'],task['revision'])
                     elapsed = time.monotonic()-started
@@ -237,7 +235,9 @@ def discover(query, store, task, bounded=False, *, quick=None):
                     result_path.with_suffix('.returned.json').write_text(json_text(result),encoding='utf-8')
                 return result
             finally:
-                if process.poll() is None:
+                if budget_token:
+                    store.model_settings.research.model_gateway.unbind(budget_token)
+                if process is not None and process.poll() is None:
                     if os.name == 'nt':
                         subprocess.run(['taskkill','/PID',str(process.pid),'/T','/F'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
                     else:
@@ -383,12 +383,9 @@ def import_confirmed(store, task):
                         # Same transaction covers existing importer + receipt + frozen snapshot.
                         # A crash cannot commit a paper without its idempotency receipt.
                         metadata = candidate['preferred']
-                        matches = merge_candidates(store,task['project_id'],candidate['versions'])
-                        if not matches or metadata not in matches[0]['versions']:
-                            raise ValueError('候选为未来日期或非论文记录，请重新搜索')
                         target = candidate.get('paper_id')
                         if not target:
-                            matched = matches[0]
+                            matched = merge_candidates(store,task['project_id'],candidate['versions'])[0]
                             target = matched['paper_id']
                         else:
                             matched = candidate
@@ -412,7 +409,7 @@ def import_confirmed(store, task):
                         paper = store.paper(task['project_id'],imported['paper_id'],imported['version_id'])
                         previous = json.loads(paper['metadata'] or '{}')
                         sources = previous.get('discovery_sources', [])
-                        sources.extend(v for v in matches[0]['versions'] if v not in sources)
+                        sources.extend(v for v in candidate['versions'] if v not in sources)
                         bindings = dict(previous.get('discovery_versions',{}))
                         if paper['version_id'] not in bindings and (not target or matched['state'] == 'update' or retry_fulltext):
                             bindings[paper['version_id']] = metadata
@@ -467,14 +464,11 @@ def collect(store, project_id, conversation_id, task_id, body):
             if key in imports and imports[key].get('paper_id'):
                 continue
             metadata = candidate['preferred']
-            matches = merge_candidates(store,project_id,candidate['versions'])
-            if not matches or metadata not in matches[0]['versions']:
-                raise ValueError('候选为未来日期或非论文记录，请重新搜索')
-            matched = matches[0]
+            matched = merge_candidates(store,project_id,candidate['versions'])[0]
             paper_id = matched['paper_id']
             previous = json.loads(store.paper(project_id,paper_id)['metadata']) if paper_id else {}
             sources = list(previous.get('discovery_sources', []))
-            sources.extend(v for v in matched['versions'] if v not in sources)
+            sources.extend(v for v in candidate['versions'] if v not in sources)
             if candidate.get('paper_id') and candidate['state'] == 'update' and store.paper(project_id,candidate['paper_id'])['version_id'] != candidate['version_id']:
                 raise ValueError('材料在确认期间已更新，请重新检索新版')
             if not paper_id or matched['state'] == 'update':
@@ -525,5 +519,5 @@ def download_collected(store, project_id, paper_id):
             if current and current['version_id'] == paper['version_id']:
                 availability = json.loads(current['availability'])
                 if availability.get('fulltext') == 'pending':
-                    availability.update(fulltext='failed',error=failure_message(store, error, paper_id=paper_id, operation='download_fulltext'))
+                    availability.update(fulltext='failed',error='全文获取失败，已保留链接和摘要。' + failure_message(store, error, paper_id=paper_id, operation='download_fulltext'))
                     store.run('UPDATE papers SET availability=? WHERE id=?',(json_text(availability),paper_id))

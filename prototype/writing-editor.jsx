@@ -11,12 +11,12 @@ function Block({ attributes, children, element }) {
   const references = useContext(References);
   const kind = element.type, attrs = { ...attributes, 'data-block-id': element.id };
   if (kind === 'img') return <figure {...attrs}><span contentEditable={false}><img src={element.url} alt={element.alt}/><figcaption>{element.alt}</figcaption></span>{children}</figure>;
-  if (kind === 'equation') return <div {...attrs}><span className="writing-equation" contentEditable={false} aria-label="公式">{element.formula}</span>{children}</div>;
+  if (kind === 'equation') return <div {...attrs}><span className="writing-equation" contentEditable={false} aria-label="公式">{element.formula}</span>{references.onEditEquation && <button type="button" contentEditable={false} onClick={()=>references.onEditEquation(element)}>编辑公式</button>}{children}</div>;
   if (kind === 'code') return <pre {...attrs} className="writing-code"><code>{children}</code></pre>;
   if (kind === 'quote') return <blockquote {...attrs} className="writing-quote">{children}</blockquote>;
   if (kind === 'divider') return <hr {...attrs} className="writing-divider"/>;
   if (kind === 'citation') return <span {...attrs} contentEditable={false} className="writing-cite" data-citation-node={element.id}><button type="button" onClick={()=>references.onCitation(element.citation_id)} aria-label={`引用 ${references.numbers[element.citation_id]}`}>[{references.numbers[element.citation_id]}]</button>{children}</span>;
-  if (kind === 'task') return <div {...attrs} className="writing-task"><input type="checkbox" contentEditable={false} checked={!!element.checked} onChange={()=>references.onToggleTask?.(element)} aria-label="完成任务"/><span>{children}</span></div>;
+  if (kind === 'task') return <div {...attrs} className="writing-task"><input type="checkbox" contentEditable={false} checked={!!element.checked} disabled={!references.onToggleTask} onChange={()=>references.onToggleTask?.(element)} aria-label="完成任务"/><span>{children}</span></div>;
   const tag = ['p','h1','h2','h3','ul','ol','li','table','tr','td'].includes(kind) ? kind : 'p';
   return React.createElement(tag, attrs, tag === 'table' ? <tbody>{children}</tbody> : children);
 }
@@ -48,7 +48,7 @@ export function citationNumbers(citations = []) {
   return numbers;
 }
 
-export function Editor({ editor, citations = [], readOnly = false, onChange, onSelection, onKeyDown, onCitation = ()=>{} }) {
+export function Editor({ editor, citations = [], readOnly = false, onChange, onSelection, onKeyDown, onEditEquation, onCitation = ()=>{} }) {
   const numbers = citationNumbers(citations);
   function visit(nodes) {for(const node of nodes){if(node.type==='citation' && !numbers[node.citation_id])numbers[node.citation_id]=Math.max(0,...Object.values(numbers))+1;if(node.children)visit(node.children);}}
   visit(editor.children);
@@ -59,7 +59,7 @@ export function Editor({ editor, citations = [], readOnly = false, onChange, onS
     if (index < 0) return;
     editor.tf.setNodes({checked: !element.checked}, {at: [index]});
   };
-  return <References.Provider value={{numbers,onCitation,onToggleTask:toggleTask}}><Plate editor={editor} onValueChange={({value}) => onChange?.(value)} onSelectionChange={({selection}) => onSelection?.(selection)}><PlateContent className="writing-content" aria-label={readOnly ? '修改差异预览' : '论文正文'} readOnly={readOnly} onKeyDown={onKeyDown} renderLeaf={Leaf}/></Plate></References.Provider>;
+  return <References.Provider value={{numbers,onCitation,onToggleTask:readOnly?null:toggleTask,onEditEquation:readOnly?null:onEditEquation}}><Plate editor={editor} onValueChange={({value}) => onChange?.(value)} onSelectionChange={({selection}) => onSelection?.(selection)}><PlateContent className="writing-content" aria-label={readOnly ? '修改差异预览' : '论文正文'} readOnly={readOnly} onKeyDown={onKeyDown} renderLeaf={Leaf}/></Plate></References.Provider>;
 }
 
 export function proposalEditor(before, after) {

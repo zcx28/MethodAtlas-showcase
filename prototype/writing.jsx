@@ -85,6 +85,7 @@ function Proposal({ proposal, citations, base, refresh, flush, error, retry, onC
       const item = await api(`${base}/proposals/${proposal.id}/${accept ? 'accept' : 'reject'}`, {});
       // Save the real result immediately; only the obsolete proposal fades out.
       if (accept && !matchMedia('(prefers-reduced-motion: reduce)').matches) setExiting(true);
+      error('');
       refresh(item);
     } catch (e) { error(e.message); }
     finally { decisionLock.current = false; setBusy(false); onDeciding(false); }
@@ -107,18 +108,26 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
   const [instruction, setInstruction] = useState(''), [mode, setMode] = useState('polish'), [onlySelected, setOnlySelected] = useState(false), [chatTarget, setChatTarget] = useState(false);
   const [busy, setBusy] = useState(false), [title, setTitle] = useState(''), [value, setValue] = useState([]), [epoch, setEpoch] = useState(0);
   const [deciding, setDeciding] = useState(false);
+  const [remoteVersion, setRemoteVersion] = useState('');
   const [papers,setPapers] = useState(()=>context().papers || []), [addedReferences,setAddedReferences] = useState([]), [inserting,setInserting] = useState(false);
   useEffect(()=>{const update=()=>setPapers([...(context().papers || [])]);window.addEventListener('methodatlas-papers-changed',update);return ()=>window.removeEventListener('methodatlas-papers-changed',update);},[context]);
   const [layoutBusy, setLayoutBusy] = useState(false), [layoutPreview, setLayoutPreview] = useState(false);
+  const [exportStatus, setExportStatus] = useState(''), exporting = useRef(false);
   const [picked, setPicked] = useState(null), [editing, setEditing] = useState(null);
+  const [commentMode, setCommentMode] = useState(false);
+  useEffect(() => {
+    const update = () => setCommentMode(!!window.MethodAtlasComments?.active(project, artifact));
+    update(); window.addEventListener('methodatlas-comment-mode', update);
+    return () => window.removeEventListener('methodatlas-comment-mode', update);
+  }, [project, artifact]);
   const surface = useRef(null), editInput = useRef(null);
   const layoutGenerate = useRef(null);
   const pickedRef = useRef(null);
   const commandTrigger = useRef(null);
   const decisionLock = useRef(false), generating = useRef(false);
   const working = useRef(null), editorRef = useRef(null), saving = useRef(null), selection = useRef(null), alive = useRef(true);
-  const latest = item?.versions.at(-1), viewed = item && (item.versions.find(v => v.id === selectedVersion) || latest);
-  const historical = viewed && viewed.id !== latest.id;
+  const latest = item?.draft || item?.versions.at(-1), viewed = item && (item.viewed_snapshot || item.versions.find(v => v.id === selectedVersion) || latest);
+  const historical = !!selectedVersion;
   const references = [...(viewed?.citations || [])];
   if (!historical) {
     for (const paper of papers) if (paper.current_version_id && !references.some(c=>c.paper_id===paper.id)) references.push(addedReferences.find(c=>c.paper_id===paper.id&&c.paper_version_id===paper.current_version_id)||{id:'paper:'+paper.id,paper_id:paper.id,paper_version_id:paper.current_version_id,title:paper.title,pending:true});
@@ -126,16 +135,29 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
   }
   const referenceNumbers = citationNumbers(references);
   const [editor, setEditor] = useState(null);
+  const [citationOpen,setCitationOpen] = useState(false), [referenceQuery,setReferenceQuery] = useState('');
+  const citationClose = useRef(null), citationTrigger = useRef(null), citationSelection = useRef(null);
+  const openCitations = () => {
+    clearTimeout(citationClose.current);
+    if (!citationOpen) {
+      const native=window.getSelection(), activeEditor=editorRef.current;
+      const range=surface.current?.contains(native?.anchorNode) ? activeEditor?.api.toSlateRange(native,{exactMatch:false,suppressThrow:true}) : null;
+      if (range) activeEditor.tf.select(range);
+      citationSelection.current=clone(range || activeEditor?.selection || selection.current);
+    }
+    setCitationOpen(true);
+  };
+  useEffect(()=>()=>clearTimeout(citationClose.current),[]);
   const positionKey = `writing-position:${project}:${artifact}`;
   const rememberPosition = () => {
-    try { localStorage.setItem(positionKey,JSON.stringify({scroll:document.getElementById('output-body')?.scrollTop || 0,selection:selection.current})); } catch {}
+    try { (globalThis.MethodAtlasStorage?.local || localStorage).setItem(positionKey,JSON.stringify({scroll:document.getElementById('output-body')?.scrollTop || 0,selection:selection.current})); } catch {}
   };
 
   useEffect(() => {
     if (!editor) return;
     const host = document.getElementById('output-body');
     let saved;
-    try { saved = JSON.parse(localStorage.getItem(positionKey) || 'null'); } catch {}
+    try { saved = JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(positionKey) || 'null'); } catch {}
     if (saved) {
       host.scrollTop = saved.scroll || 0;
       const validPoint = point => {
@@ -154,18 +176,19 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
   }, [editor, positionKey]);
 
   function install(loaded, preserveDraft = true) {
+    setRemoteVersion('');
     if (!alive.current) return;
     setItem(loaded);
-    const last = loaded.versions.at(-1), version = loaded.versions.find(v => v.id === selectedVersion) || last;
+    const last = loaded.draft || loaded.versions.at(-1), version = loaded.viewed_snapshot || loaded.versions.find(v => v.id === selectedVersion) || last;
     let draft = null;
-    try { draft = preserveDraft ? JSON.parse(localStorage.getItem(draftKey)) : null; } catch { setError('本地草稿损坏；请先备份浏览器草稿'); }
-    if (draft && draft.base_version_id !== last.id) setError('服务器已有新版，本地未保存内容已保留。请复制需要的内容后回读正式版并合并。');
-    const restored = draft && version.id === last.id ? draft : {base_version_id:last.id,title:version.title,document:version.payload.document,request_id:id()};
+    try { draft = preserveDraft ? JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(draftKey)) : null; } catch { setError('本地草稿损坏；请先备份浏览器草稿'); }
+    if (!historical && draft && draft.base_version_id !== last.id) setError('服务器已有新版，本地未保存内容已保留。请复制需要的内容后回读服务器草稿并合并。');
+    const restored = draft && !historical ? draft : {base_version_id:last.id,title:version.title,document:version.payload.document,request_id:id()};
     working.current = clone(restored);
     const next = makeEditor(restored.document);
     editorRef.current = next; setEditor(next); setValue(restored.document); setTitle(restored.title); setEpoch(e => e + 1);
-    setStatus(draft ? '已恢复浏览器中未保存的内容' : `已保存 · v${version.version_no}`);
-    if (!preserveDraft) onSaved(loaded);
+    setStatus(draft && !historical ? '已恢复浏览器中未保存的内容' : historical ? `历史存档 · v${version.version_no}` : '已自动保存草稿');
+    if (!historical) onSaved(loaded);
   }
 
   async function flush() {
@@ -176,20 +199,33 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
     const promise = (async () => {
       try {
         setStatus('正在保存…');
-        const result = await api(`${base}/save`, snapshot);
+        const result = await api(`${base}/draft`, snapshot);
         const changedDuringSave = working.current.request_id !== snapshot.request_id;
         working.current.base_version_id = result.version_id;
         working.current.dirty = changedDuringSave;
-        if (changedDuringSave) localStorage.setItem(draftKey, JSON.stringify(working.current));
-        else localStorage.removeItem(draftKey);
+        if (changedDuringSave) (globalThis.MethodAtlasStorage?.local || localStorage).setItem(draftKey, JSON.stringify(working.current));
+        else (globalThis.MethodAtlasStorage?.local || localStorage).removeItem(draftKey);
         const loaded = await api(base);
-        if (alive.current) { setItem(loaded); setStatus(`已保存 · v${result.version_no}`); setError(''); onSaved(loaded); }
+        if (alive.current) { setItem(loaded); setStatus('已自动保存草稿'); setError(''); onSaved(loaded); }
       } catch (e) { if (alive.current) { setError(e.message); setStatus('未保存：内容已保留在此浏览器'); } throw e; }
     })();
     saving.current = promise;
     try { await promise; }
     finally { if (saving.current === promise) saving.current = null; }
     if (working.current.dirty) return flush();
+  }
+
+  async function archive(name = '') {
+    if (decisionLock.current || historical) return;
+    decisionLock.current = true; setDeciding(true);
+    try {
+      await flush();
+      const result = await api(`${base}/archive`, {request_id:id(), base_version_id:working.current.base_version_id, name});
+      working.current.base_version_id = result.version_id;
+      const loaded = await api(base);
+      if (alive.current) { setItem(loaded); onSaved(loaded); setError(''); setStatus(result.unchanged ? '内容未变化，无需重复存档' : `已存档 · v${result.version_no}`); }
+    } catch (e) { if (alive.current) setError(e.message); }
+    finally { decisionLock.current = false; if (alive.current) setDeciding(false); }
   }
 
   function changed(document, nextTitle = title) {
@@ -199,7 +235,7 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
     document.forEach((node, index) => { if (!node.id || ids.has(node.id)) editorRef.current.tf.setNodes({id:id()}, {at:[index]}); ids.add(node.id); });
     const cleaned = clone(editorRef.current.children);
     working.current = {...working.current, title:nextTitle, document:cleaned, request_id:id(), dirty:true};
-    try { localStorage.setItem(draftKey, JSON.stringify(working.current)); }
+    try { (globalThis.MethodAtlasStorage?.local || localStorage).setItem(draftKey, JSON.stringify(working.current)); }
     catch { setError('浏览器草稿空间不足；请立即保存或下载未保存内容'); }
     setValue(cleaned); setStatus('待保存…');
   }
@@ -242,9 +278,37 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
       await flush();
       if(!alive.current || conversationId!==context().conversation) return;
       if(snapshot.document!==JSON.stringify(editorRef.current.children))throw Error('正文已改变，请重新选择文字');
-      onAddFragment({id:id(),artifact_id:artifact,version_id:historical?viewed.id:working.current.base_version_id,title,selection:snapshot.selection,text:snapshot.text});
+      const version = historical ? viewed.id : working.current.base_version_id;
+      await api(`${base}/snapshot`, {version_id:version});
+      if(!alive.current || conversationId!==context().conversation) return;
+      if(snapshot.document!==JSON.stringify(editorRef.current.children) || version!==(historical?viewed.id:working.current.base_version_id))throw Error('正文已改变，请重新选择文字');
+      if(await onAddFragment({id:id(),artifact_id:artifact,version_id:version,title,selection:snapshot.selection,text:snapshot.text})===false)throw Error('暂时无法打开对话，选区已保留，请重试。');
       setPicked(null);pickedRef.current=null;
     }catch(e){setError(e.message);}
+  }
+
+  async function commentSource(snapshot = null) {
+    if (!working.current || !viewed) throw Error('文档尚未加载，请稍后评论');
+    await flush();
+    if (!alive.current) throw Error('文档已切换，请重新选择文字');
+    if (snapshot && snapshot.document !== JSON.stringify(editorRef.current.children)) throw Error('正文已改变，请重新选择文字');
+    const version = historical ? viewed.id : working.current.base_version_id;
+    await api(`${base}/snapshot`, {version_id:version});
+    return {version_id:version, ...(snapshot ? {anchor:{kind:'document',selection:snapshot.selection,quote:snapshot.text}} : {})};
+  }
+  async function addComment() {
+    const snapshot = pickedRef.current;
+    if (!snapshot) return;
+    try { const source=await commentSource(snapshot);window.MethodAtlasComments?.selected(project,artifact,source);setPicked(null);pickedRef.current=null; }
+    catch(e) {setError(e.message);}
+  }
+  function locateComment(range, quote, sourceVersion) {
+    const currentVersion = historical ? viewed?.id : working.current?.base_version_id;
+    if (working.current?.dirty || currentVersion !== sourceVersion || selectionSnapshot(editor.children, range)?.text !== quote) {
+      throw Error('正文已改变，请保存后刷新评论，或查看引用版本。');
+    }
+    editor.tf.select(range); editor.tf.focus();
+    surface.current?.querySelector(`[data-block-id="${CSS.escape(editor.children[range.anchor.path[0]].id)}"]`)?.scrollIntoView({block:'center'});
   }
 
   async function propose(message = instruction, origin = 'right') {
@@ -261,15 +325,26 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
       setStatus(request.selection ? 'AI 正在修改选中文字…' : 'AI 正在处理整篇文稿…');
       const loaded = await api(`${base}/propose`, request);
       const proposal=loaded.proposals.find(p=>p.id===request.request_id);
-      if(proposal?.status==='failed'){if(alive.current){setItem(loaded);setError(proposal.error||'编辑失败，请重试');setStatus('编辑失败，原文保持不变');}return false;}
+      if(proposal?.status==='failed'){if(alive.current){setItem(loaded);setError(proposal.explanation||proposal.error||'编辑失败，请重试');setStatus('编辑失败，原文保持不变');}return false;}
       if (alive.current) { setItem(loaded); setStatus('请审阅修改；接受后才会保存到正文');setEditing(null);setPicked(null);pickedRef.current=null;setInstruction('');requestAnimationFrame(()=>document.querySelector('.writing-proposal')?.scrollIntoView({block:'nearest'})); }
       return true;
     } catch (e) { if (alive.current) setError(e.message); }
-    finally { generating.current = false; if (alive.current) setBusy(false); }
+    finally {
+      generating.current = false;
+      if (alive.current) {
+        setBusy(false);
+        requestAnimationFrame(()=>{ if (alive.current) editInput.current?.focus({preventScroll:true}); });
+      }
+    }
   }
 
-  useEffect(() => { alive.current = true; api(base).then(loaded => install(loaded)).catch(e => setError(e.message)); return () => { alive.current = false; flush().catch(() => {}); }; }, [base]);
-  useEffect(() => { active = {flush, submit: async text => {if(!chatTarget)return {handled:false};const submitted=!!await propose(text, 'chat');if(submitted)setChatTarget(false);return {handled:true,submitted};}}; return () => { active = null; }; });
+  useEffect(() => { alive.current = true; api(base + (selectedVersion ? `?version_id=${encodeURIComponent(selectedVersion)}` : '')).then(loaded => install(loaded)).catch(e => setError(e.message)); return () => { alive.current = false; flush().catch(() => {}); }; }, [base]);
+  useEffect(() => { active = {flush, commentSource, locateComment, remoteVersion:(p,a,v)=>{if(p===project&&a===artifact&&!historical&&working.current&&!saving.current)setRemoteVersion(v&&v!==working.current.base_version_id?v:'');}, submit: async text => {if(!chatTarget)return {handled:false};const submitted=!!await propose(text, 'chat');if(submitted)setChatTarget(false);return {handled:true,submitted};}}; return () => { active = null; }; });
+  useEffect(() => {
+    if (!working.current?.dirty || historical) return;
+    const timer = setTimeout(() => flush().catch(() => {}), 1100);
+    return () => clearTimeout(timer);
+  }, [value, title, historical]);
   useEffect(() => {
     if (!item?.proposals.some(p => p.status === 'generating')) return;
     const handle = setTimeout(() => api(base).then(loaded => alive.current && setItem(loaded)).catch(e => setError(e.message)), 1500);
@@ -277,7 +352,7 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
   }, [item]);
 
   const insert = node => { if(decisionLock.current) {setError('正在提交确认；请在确认完成后再次插入');return;} const at=Math.min(editor.children.length,(editor.selection?.anchor.path?.[0] ?? editor.children.length-1)+1); editor.tf.insertNodes(node, {at:[Math.max(0,at)]}); editor.tf.focus(); };
-  const block = type => type === 'task' ? {id:id(),type:'task',checked:false,children:[{text:''}]} : type === 'ul' || type === 'ol' ? {id:id(),type,children:[{type:'li',children:[{text:''}]}]} : type === 'divider' ? {id:id(),type:'divider',children:[{text:''}]} : {id:id(),type,children:[{text:''}]};
+  const block = type => type === 'table' ? {id:id(),type:'table',children:[0,1].map(()=>({type:'tr',children:[0,1].map(()=>({type:'td',children:[{type:'p',children:[{text:''}]}]}))}))} : type === 'task' ? {id:id(),type:'task',checked:false,children:[{text:''}]} : type === 'ul' || type === 'ol' ? {id:id(),type,children:[{type:'li',children:[{text:''}]}]} : type === 'divider' ? {id:id(),type:'divider',children:[{text:''}]} : {id:id(),type,children:[{text:''}]};
   const handleKeyDown = event => {
     if (historical || deciding || layoutBusy) return;
     if (event.key === '/' && editor.selection) { commandTrigger.current = {...editor.selection.anchor, path:[...editor.selection.anchor.path]}; setCommand({top:0,left:0}); }
@@ -301,6 +376,42 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
     }
   };
   const [command,setCommand] = useState(null);
+  const imageInput = useRef(null);
+  const insertImage = async event => {
+    const file=event.target.files[0];
+    event.target.value='';
+    if (!file) return;
+    const index=Math.min(editor.children.length,(editor.selection?.anchor.path?.[0] ?? editor.children.length-1)+1);
+    try {
+      if (!['image/png','image/jpeg'].includes(file.type)) throw Error('图片须为 PNG/JPEG');
+      if (file.size>500000) throw Error('图片最大 500 KB');
+      const bytes=new Uint8Array(await file.slice(0,8).arrayBuffer());
+      const signature=file.type==='image/png'?[137,80,78,71,13,10,26,10]:[255,216,255];
+      if (!signature.every((byte,i)=>bytes[i]===byte)) throw Error('图片内容与 PNG/JPEG 类型不一致');
+      const url=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(reader.result);
+        reader.onerror=()=>reject(Error('图片读取失败，请重新选择'));
+        reader.readAsDataURL(file);
+      });
+      const image=new Image(); image.src=url;
+      try { await image.decode(); } catch { throw Error('图片无法解码，请选择有效的 PNG/JPEG'); }
+      if (image.naturalWidth*image.naturalHeight>16000000) throw Error('图片像素过大');
+      if (!alive.current || editorRef.current!==editor || decisionLock.current) return;
+      editor.tf.insertNodes({id:id(),type:'img',url,alt:file.name,children:[{text:''}]},{at:[index]});
+      editor.tf.focus(); setError('');
+    } catch(error) { if(alive.current && editorRef.current===editor) setError(error.message); }
+  };
+  const editEquation = async element => {
+    const index=element?.type==='equation'?editor.children.findIndex(n=>n.id===element.id):selectedBlock();
+    if (index<0) return;
+    const old=editor.children[index];
+    const formula=await window.MethodAtlasTextInput('编辑公式','TeX 公式；PDF/DOCX 导出时排版',old?.type==='equation'?old.formula:'E=mc^2');
+    if (!formula?.trim() || !alive.current || editorRef.current!==editor || decisionLock.current) return;
+    if(old?.type==='equation') editor.tf.setNodes({formula},{at:[index]});
+    else editor.tf.insertNodes({id:id(),type:'equation',formula,children:[{text:''}]},{at:[Math.min(index+1,editor.children.length)]});
+    editor.tf.focus();
+  };
   // 「/」只是唤起菜单的引子：选中一项后它得自己消失，菜单没被用上时点别处或按 Esc 也要关掉。
   const dropCommandTrigger = () => {
     const point = commandTrigger.current;
@@ -320,6 +431,8 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
   // 菜单里的类型要作用在「光标所在的那一块」上（像 Notion 那样转换），不能永远另起一块——
   // 否则在段落里选「标题 1」，只会看到下面多出一个空标题，原来那行的字号没变。
   const applyCommand = type => {
+    if (type === 'img') return imageInput.current?.click();
+    if (type === 'equation') return editEquation();
     const index = editor.selection?.anchor.path?.[0] ?? editor.children.length - 1;
     const current = editor.children[index];
     if (!current) return insert(block(type));
@@ -351,19 +464,23 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
   }, [command]);
   const selectedBlock = () => editor.selection?.anchor.path[0] ?? 0;
   const exportFile = async kind => {
+    if(exporting.current)return;
+    exporting.current=true;setExportStatus('正在导出…');
     try {
       await flush();
       const version = historical ? viewed.id : working.current.base_version_id;
       const response = await fetch(`${base}/versions/${version}/export?format=${kind}`);
-      if (!response.ok) throw Error((await response.json()).error);
+      if (!response.ok) {const data=await response.json().catch(()=>null);throw Error(data?.explanation || data?.error || '导出失败，请稍后重新选择导出格式重试。');}
       const url = URL.createObjectURL(await response.blob()), link = document.createElement('a');
       link.href = url; link.download = `${title}.${kind}`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch(e) { setError(e.message); }
+      if(alive.current)setExportStatus('导出文件已准备好。');
+    } catch(e) { if(alive.current)setExportStatus(window.MethodAtlasHttp.errorMessage(e.message)); }
+    finally {exporting.current=false;}
   };
   const downloadDraft = () => { const url = URL.createObjectURL(new Blob([JSON.stringify(working.current,null,2)],{type:'application/json'})); const a=document.createElement('a'); a.href=url; a.download='未保存文稿.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); };
   if (!editor || !viewed) return <p role="status">{error || status}</p>;
   const pending = item.proposals.some(p => ['pending','generating'].includes(p.status));
-  const saveState = status.startsWith('未保存') ? 'error' : /^(已保存|已恢复)/.test(status) ? 'saved' : 'pending';
+  const saveState = status.startsWith('未保存') ? 'error' : /^(已|内容未变化|历史存档)/.test(status) ? 'saved' : 'pending';
   // The status line breathes only while this page is actually waiting on the model. A proposal that is
   // still generating on the server already shows its own breathing label, so a calm "已保存" never pulses.
   const aiWorking = busy;
@@ -373,28 +490,33 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
     <header className="writing-head">
       <div className="writing-head-row">
         <input className="writing-title" aria-label="文档标题" value={title} disabled={historical||deciding||layoutBusy} placeholder="未命名文档" onChange={e => {setTitle(e.target.value); changed(editor.children,e.target.value);}}/>
+        {!pending && status==='已自动保存草稿' && <span className="writing-status writing-saved-dot" title={status} role="status"><span className="sr-only">{status}</span></span> }
         <details className="writing-menu">
           <summary title="更多操作" aria-label="更多操作"><span aria-hidden="true">···</span></summary>
           <div className="writing-menu-panel">
+            {!historical && <button type="button" disabled={deciding||layoutBusy} onClick={e=>{e.currentTarget.closest('details').open=false;archive();}}>存档</button>}
             <button type="button" disabled={deciding||layoutBusy||pending} onClick={()=>layoutGenerate.current?.()}>AI 一键排版</button>
-            <button type="button" disabled={deciding} onClick={()=>flush().catch(()=>{})}>立即保存</button>
-            {['html','pdf','docx'].map(kind=><button type="button" key={kind} disabled={pending} onClick={()=>exportFile(kind)}>{kind==='pdf'?'导出基础 PDF':`导出 ${kind.toUpperCase()}`}</button>)}
+            {!historical && <button type="button" disabled={deciding||layoutBusy} onClick={async e=>{e.currentTarget.closest('details').open=false;const name=await window.MethodAtlasTextInput('命名存档','存档名称（可选）');if(name!==null&&alive.current)archive(name);}}>命名存档…</button>}
+            {['html','pdf','docx'].map(kind=><button type="button" key={kind} disabled={pending || exportStatus==='正在导出…'} onClick={()=>exportFile(kind)}>{kind==='pdf'?'导出基础 PDF':`导出 ${kind.toUpperCase()}`}</button>)}
           </div>
         </details>
       </div>
-      {!pending && <p className="writing-status" data-state={saveState} data-busy={aiWorking ? 'true' : 'false'} role="status">{status}</p>}
-      {historical && <p className="writing-readonly" role="status"><span>正在查看历史版本 v{viewed.version_no}，正文只读。</span><button type="button" onClick={()=>onOpenLatest?.()}>回到最新版 v{latest.version_no}</button></p>}
+      {exportStatus && <p className="writing-export-status" role="status">{exportStatus}</p>}
+      {!pending && status!=='已自动保存草稿' && <p className="writing-status" data-state={saveState} data-busy={aiWorking ? 'true' : 'false'} role="status">{status}</p>}
+      {remoteVersion && <p className="writing-readonly" role="status">其他成员已更新文稿；当前内容和输入保持不变。<button type="button" onClick={()=>setError('服务器已有新版。请先下载或复制需要保留的本地内容，再回读正式版并合并。')}>处理新版</button></p>}
+      {historical && <p className="writing-readonly" role="status"><span>{item.viewed_snapshot ? '正在查看引用快照，正文只读。' : `正在查看历史存档 v${viewed.version_no}，正文只读。`}</span><button type="button" onClick={()=>onOpenLatest?.()}>回到当前草稿</button></p>}
       <p className="writing-meta">{viewed.payload.author} · {new Date(viewed.created).toLocaleString()} · {viewed.payload.summary}</p>
     </header>
-    <PaperLayout base={base} version={viewed.id} dirty={!!working.current?.dirty} blocked={pending||busy||deciding} prepare={async()=>{await flush();return historical?viewed.id:working.current.base_version_id;}} preview={layoutPreview} onPreview={setLayoutPreview} onBusy={setLayoutBusy} registerGenerate={fn=>{layoutGenerate.current=fn}}/>
-    {error && <div className="writing-error" role="status"><p>{window.MethodAtlasHttp.errorMessage(error)}</p><div className="writing-actions"><button type="button" onClick={()=>flush().catch(()=>{})}>重试保存</button><button type="button" onClick={downloadDraft}>下载未保存内容</button><button type="button" onClick={async()=>{try{const loaded=await api(base);localStorage.removeItem(draftKey);working.current.dirty=false;install(loaded,false);setError('');}catch(e){setError(e.message);}}}>回读正式版</button></div></div>}
+    <PaperLayout base={base} version={viewed.id} dirty={!!working.current?.dirty} blocked={pending||busy||deciding} prepare={async()=>{await flush();const version=historical?viewed.id:working.current.base_version_id;await api(`${base}/snapshot`,{version_id:version});return version;}} preview={layoutPreview} onPreview={setLayoutPreview} onBusy={setLayoutBusy} registerGenerate={fn=>{layoutGenerate.current=fn}}/>
+    {error && <div className="writing-error" role="status"><p>{window.MethodAtlasHttp.errorMessage(error)}</p>{!item.proposals.some(p=>p.status==='failed' && (p.explanation||p.error)===error) && <div className="writing-actions"><button type="button" onClick={()=>flush().catch(()=>{})}>重试保存</button><button type="button" onClick={downloadDraft}>下载未保存内容</button><button type="button" onClick={async()=>{if(working.current?.dirty&&!window.confirm('当前存在未保存的修改。请先下载未保存内容；确定放弃这些修改并载入服务器新版？'))return;try{const loaded=await api(base);if(!alive.current)return;(globalThis.MethodAtlasStorage?.local || localStorage).removeItem(draftKey);working.current.dirty=false;install(loaded,false);setError('');}catch(e){setError(e.message);}}}>回读正式版</button></div>}</div>}
     {outline.length > 0 && <nav className="writing-outline" aria-label="文档大纲">{outline.map(n=><button type="button" key={n.id} onClick={()=>document.querySelector(`[data-block-id="${CSS.escape(n.id)}"]`)?.scrollIntoView({block:'center'})}>{nodeText(n)||'未命名标题'}</button>)}</nav>}
     
     <div className="writing-surface" ref={surface} onKeyUp={e=>{if(e.key==='Escape'&&!busy)closeSelection();}}>
-      <Editor key={epoch} editor={editor} citations={references} readOnly={historical||deciding||layoutBusy||inserting} onKeyDown={handleKeyDown} onChange={nodes=>{changed(nodes);if(!editing){setPicked(null);pickedRef.current=null;}}} onCitation={onCitation} onSelection={range=>{if(range){selection.current=clone(range);rememberPosition();}}}/>
+      <Editor key={epoch} editor={editor} citations={references} readOnly={historical||deciding||layoutBusy||inserting} onKeyDown={handleKeyDown} onEditEquation={editEquation} onChange={nodes=>{changed(nodes);if(!editing){setPicked(null);pickedRef.current=null;}}} onCitation={onCitation} onSelection={range=>{if(range){selection.current=clone(range);rememberPosition();}}}/>
       {command && <div className="writing-command-menu" role="menu">{[['p','正文'],['h1','标题 1'],['h2','标题 2'],['h3','标题 3'],['ul','无序列表'],['ol','有序列表'],['task','任务列表'],['quote','引用'],['divider','分割线'],['table','表格'],['img','图片'],['equation','公式']].map(([type,label])=><button key={type} type="button" onMouseDown={e=>e.preventDefault()} onClick={()=>chooseCommand(type)}><span><CommandIcon type={type}/></span><b>{label}</b></button>)}</div>}
       {picked && !editing && <div className="writing-selection-menu" aria-label="选中文字操作" style={{top:Math.max(-36,picked.top-38)}} onMouseDown={e=>e.preventDefault()}>
         <button type="button" onClick={addFragment}>添加到对话</button>
+        {commentMode && <button type="button" onClick={addComment}>评论所选文字</button>}
         <button type="button" disabled={historical||busy||deciding||pending||!picked.editable} title={!picked.editable?'表格、公式和图片暂不支持选区编辑':historical?'历史版本只读':pending?'请先处理待确认修改':'编辑所选文字'} onClick={()=>{setEditing(picked);setInstruction('');setError('');}}>编辑</button>
         {!picked.editable && <span className="writing-selection-hint">表格、公式和图片仅支持添加到对话</span>}
       </div>}
@@ -406,27 +528,16 @@ function Writing({ project, artifact, selectedVersion, context, onSaved, onCitat
       </form>}
     </div>
     <div className="writing-dock">
-    <details className="writing-citations" open><summary>引用与参考文献{references.length ? ` · ${references.length}` : ''}</summary><div className="writing-citations-list">{references.map(citation=><p key={citation.id} className="writing-citation"><button type="button" className="writing-citation-title" title={citation.title} onClick={()=>citation.pending ? window.dispatchEvent(new CustomEvent('methodatlas-open-reference',{detail:citation})) : onCitation(citation.id)}>[{referenceNumbers[citation.id]}] {citation.title}</button>{!historical&&<button type="button" className="writing-cite-action" disabled={deciding||inserting||layoutBusy} onMouseDown={e=>e.preventDefault()} onClick={async e=>{if(decisionLock.current||inserting)return;const source=document.querySelector(`[data-source-id="${CSS.escape(citation.paper_id)}"]`);const rect=source?.getBoundingClientRect();const origin=rect?.width&&rect.top>=0&&rect.bottom<=innerHeight?rect:e.currentTarget.getBoundingClientRect();const savedSelection=editor.selection?clone(editor.selection):null;setInserting(true);try{const resolved=citation.pending?await api(`${base}/reference`,{paper_id:citation.paper_id,paper_version_id:citation.paper_version_id}):citation;if(!alive.current||editorRef.current!==editor)return;if(citation.pending)setAddedReferences(refs=>[...refs.filter(c=>c.id!==resolved.id),resolved]);if(savedSelection)editor.tf.select(savedSelection);const nodeId=id();editor.tf.insertNodes({id:nodeId,type:'citation',citation_id:resolved.id,children:[{text:''}]});requestAnimationFrame(()=>animateInsertedCitation(origin,surface.current?.querySelector(`[data-citation-node="${nodeId}"]`)));}catch(error){setError(error.message);}finally{if(alive.current)setInserting(false);}}}>插入引用</button>}</p>)}</div></details>
-    {!historical && <fieldset disabled={deciding||layoutBusy} className="writing-toolbar" aria-label="编辑工具栏">
-      <select className="writing-style" aria-label="段落样式" defaultValue="p" onChange={e=>{const index=selectedBlock(); if (['p','h1','h2','h3'].includes(editor.children[index].type)) editor.tf.setNodes({type:e.target.value},{at:[index]});}}><option value="p">正文</option><option value="h1">标题 1</option><option value="h2">标题 2</option><option value="h3">标题 3</option></select>
-      <span className="writing-sep" aria-hidden="true"/>
-      <button type="button" className="writing-mark" title="加粗" aria-label="加粗" onMouseDown={e=>e.preventDefault()} onClick={()=>editor.tf.toggleMark('bold')}><strong>B</strong></button>
-      <button type="button" className="writing-mark" title="斜体" aria-label="斜体" onMouseDown={e=>e.preventDefault()} onClick={()=>editor.tf.toggleMark('italic')}><em>I</em></button>
-      <button type="button" className="writing-mark" title="下划线" aria-label="下划线" onMouseDown={e=>e.preventDefault()} onClick={()=>editor.tf.toggleMark('underline')}><u>U</u></button>
-      <span className="writing-sep" aria-hidden="true"/>
-      <button type="button" className="writing-tool" title="添加段落" aria-label="添加段落" onClick={()=>insert(paragraph())}><span className="writing-glyph" aria-hidden="true">¶</span></button>
-      <button type="button" className="writing-tool" title="任务列表" aria-label="任务列表" onClick={()=>insert(block('task'))}>☑</button>
-      <button type="button" className="writing-tool" title="项目列表" aria-label="项目列表" onClick={()=>insert({id:id(),type:'ul',children:[{type:'li',children:[{text:'列表项'}]}]})}><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="currentColor"><circle cx="2.1" cy="3" r="1"/><circle cx="2.1" cy="7" r="1"/><circle cx="2.1" cy="11" r="1"/></g><g stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><line x1="5.3" y1="3" x2="12.2" y2="3"/><line x1="5.3" y1="7" x2="12.2" y2="7"/><line x1="5.3" y1="11" x2="12.2" y2="11"/></g></svg></button>
-      <button type="button" className="writing-tool" title="编号列表" aria-label="编号列表" onClick={()=>insert({id:id(),type:'ol',children:[{type:'li',children:[{text:'列表项'}]}]})}><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="currentColor" fontSize="5" fontFamily="inherit"><text x="0.6" y="4.7">1</text><text x="0.6" y="8.9">2</text><text x="0.6" y="13.1">3</text></g><g stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><line x1="5.3" y1="3" x2="12.2" y2="3"/><line x1="5.3" y1="7" x2="12.2" y2="7"/><line x1="5.3" y1="11" x2="12.2" y2="11"/></g></svg></button>
-      <button type="button" className="writing-tool" title="插入表格" aria-label="插入表格" onClick={()=>insert({id:id(),type:'table',children:[0,1].map(()=>({type:'tr',children:[0,1].map(()=>({type:'td',children:[{type:'p',children:[{text:''}]}]}))}))})}><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="1" y="1.5" width="12" height="11" rx="1"/><line x1="1" y1="5.2" x2="13" y2="5.2"/><line x1="1" y1="8.9" x2="13" y2="8.9"/><line x1="5" y1="1.5" x2="5" y2="12.5"/><line x1="9" y1="1.5" x2="9" y2="12.5"/></g></svg></button>
-      <button type="button" className="writing-tool" title="表格加行" aria-label="表格加行" onClick={()=>{const top=selectedBlock(), table=editor.children[top]; if(table.type==='table') editor.tf.insertNodes({type:'tr',children:table.children[0].children.map(()=>({type:'td',children:[{type:'p',children:[{text:''}]}]}))},{at:[top,table.children.length]});}}><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="1" y="1" width="12" height="8.5" rx="1"/><line x1="1" y1="5.2" x2="13" y2="5.2"/><line x1="5" y1="1" x2="5" y2="9.5"/><line x1="9" y1="1" x2="9" y2="9.5"/></g><g stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><line x1="10.6" y1="12" x2="13.4" y2="12"/><line x1="12" y1="10.6" x2="12" y2="13.4"/></g></svg></button>
-      <button type="button" className="writing-tool" title="表格加列" aria-label="表格加列" onClick={()=>{const top=selectedBlock(), table=editor.children[top]; if(table.type==='table' && table.children[0].children.length<12) table.children.forEach((row,i)=>editor.tf.insertNodes({type:'td',children:[{type:'p',children:[{text:''}]}]},{at:[top,i,row.children.length]}));}}><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="1" y="1" width="9" height="10" rx="1"/><line x1="1" y1="4.3" x2="10" y2="4.3"/><line x1="1" y1="7.6" x2="10" y2="7.6"/><line x1="5" y1="1" x2="5" y2="11"/></g><g stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><line x1="10.6" y1="12" x2="13.4" y2="12"/><line x1="12" y1="10.6" x2="12" y2="13.4"/></g></svg></button>
-      <label className="writing-tool writing-upload" title="插入图片（PNG/JPEG，最大 500 KB）" aria-label="插入图片"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="none" stroke="currentColor" strokeWidth="1.2"><rect x="1" y="2" width="12" height="10" rx="1.5"/><path d="M2.5 10.5l2.8-2.8 2.2 2.2 1.8-1.8 2.2 2.2"/></g><circle cx="4.7" cy="5.3" r="1.1" fill="currentColor"/></svg><input type="file" accept="image/png,image/jpeg" onChange={async e=>{const file=e.target.files[0];if(!file)return;if(file.size>500000)return setError('图片最大500 KB');const reader=new FileReader();reader.onload=()=>insert({id:id(),type:'img',url:reader.result,alt:file.name,children:[{text:''}]});reader.readAsDataURL(file);}}/></label>
-      <button type="button" className="writing-tool" title="编辑公式" aria-label="编辑公式" onClick={()=>{const old=editor.children[selectedBlock()]; const formula=prompt('输入 TeX 公式；PDF/DOCX 导出时排版',old.type==='equation'?old.formula:'E=mc^2');if(formula) {if(old.type==='equation') editor.tf.setNodes({formula},{at:[selectedBlock()]});else insert({id:id(),type:'equation',formula,children:[{text:''}]});}}}><span className="writing-glyph" aria-hidden="true">Σ</span></button>
-      <span className="writing-count" role="status" aria-label="字数">{count} 个字</span>
-    </fieldset>}
+    <div className="writing-citations" onPointerEnter={e=>{if(e.pointerType!=='touch')openCitations();}} onPointerLeave={e=>{if(e.pointerType!=='touch')citationClose.current=setTimeout(()=>setCitationOpen(false),220);}} onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget))setCitationOpen(false);}} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setCitationOpen(false);citationTrigger.current?.focus();}}}>
+      <button ref={citationTrigger} type="button" className="writing-citations-trigger" aria-expanded={citationOpen} aria-controls={`citation-picker-${artifact}`} onClick={()=>citationOpen?setCitationOpen(false):openCitations()} onKeyDown={e=>{if(e.key==='ArrowUp'){e.preventDefault();openCitations();}}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v16H4z M14 4h6v16h-6z M7 8h1 M17 8h1"/></svg>引用与参考文献<span>{references.length}</span></button>
+      <div className="writing-citations-popup" id={`citation-picker-${artifact}`} hidden={!citationOpen} role="region" aria-label="选择引用">
+      <div className="writing-citations-card"><input type="search" aria-label="搜索参考文献" placeholder="搜索参考文献…" value={referenceQuery} onChange={e=>setReferenceQuery(e.target.value)}/>
+      <div className="writing-citations-list">{!references.length && <p className="muted">添加项目文献后可在这里插入引用。</p>}{references.filter(c=>c.title.toLocaleLowerCase().includes(referenceQuery.trim().toLocaleLowerCase())).map(citation=><p key={citation.id} className="writing-citation"><button type="button" className="writing-citation-title" title={citation.title} onClick={()=>citation.pending ? window.dispatchEvent(new CustomEvent('methodatlas-open-reference',{detail:citation})) : onCitation(citation.id)}>[{referenceNumbers[citation.id]}] {citation.title}</button>{!historical&&<button type="button" className="writing-cite-action" disabled={deciding||inserting||layoutBusy} onMouseDown={e=>e.preventDefault()} onClick={async e=>{if(decisionLock.current||inserting)return;const source=document.querySelector(`[data-source-id="${CSS.escape(citation.paper_id)}"]`);const rect=source?.getBoundingClientRect();const origin=rect?.width&&rect.top>=0&&rect.bottom<=innerHeight?rect:e.currentTarget.getBoundingClientRect();const savedSelection=clone(citationSelection.current || editor.selection || selection.current);setInserting(true);try{const resolved=citation.pending?await api(`${base}/reference`,{paper_id:citation.paper_id,paper_version_id:citation.paper_version_id}):citation;if(!alive.current||editorRef.current!==editor)return;if(citation.pending)setAddedReferences(refs=>[...refs.filter(c=>c.id!==resolved.id),resolved]);if(savedSelection)editor.tf.select(savedSelection);const nodeId=id();editor.tf.insertNodes({id:nodeId,type:'citation',citation_id:resolved.id,children:[{text:''}]},savedSelection?{at:savedSelection}:{});requestAnimationFrame(()=>animateInsertedCitation(origin,surface.current?.querySelector(`[data-citation-node="${nodeId}"]`)));}catch(error){setError(error.message);}finally{if(alive.current)setInserting(false);}}}>插入引用</button>}</p>)}{references.length>0&&!references.some(c=>c.title.toLocaleLowerCase().includes(referenceQuery.trim().toLocaleLowerCase()))&&<p className="muted">没有匹配的参考文献。</p>}</div></div></div></div>
+    <span className="writing-count" aria-label="字数">{count} 字</span>
+    <input ref={imageInput} type="file" accept="image/png,image/jpeg" onChange={insertImage} hidden/>
+
     </div>
-    {historical && <button type="button" className="writing-restore" onClick={async()=>{try{const result=await api(`${base}/restore`,{request_id:id(),version_id:viewed.id,base_version_id:latest.id});onSaved(await api(base),result.version_id);}catch(e){setError(e.message);}}}>恢复此版为新版本</button>}
+    {historical && <button type="button" className="writing-restore" disabled={deciding} onClick={async()=>{if(decisionLock.current||!window.confirm('恢复将替换当前草稿，已有历史存档保持不变。确定恢复？'))return;decisionLock.current=true;setDeciding(true);try{await api(`${base}/restore`,{request_id:id(),version_id:viewed.id,base_version_id:latest.id});if(!alive.current)return;(globalThis.MethodAtlasStorage?.local || localStorage).removeItem(draftKey);const loaded=await api(base);if(alive.current)onSaved(loaded,'draft');}catch(e){if(alive.current)setError(e.message);}finally{decisionLock.current=false;if(alive.current)setDeciding(false);}}}>恢复到当前草稿</button>}
     {item.proposals.slice().reverse().map(p=><Proposal key={p.id} proposal={p} citations={latest.citations} base={base} flush={flush} refresh={loaded=>install(loaded,false)} error={setError} onCitation={onCitation} onDeciding={setDeciding} deciding={deciding} decisionLock={decisionLock} retry={request=>{setInstruction(request.instruction);setMode(request.mode);selection.current=null;setStatus('已准备原指令；请重新选择文字或处理整文，再明确发送');}}/>)}
   </div>;
 }
@@ -435,6 +546,9 @@ window.MethodAtlasWriting = {
   mount(host, options) { this.unmount(); const root=createRoot(host);mounted=root;root.render(<Writing {...options}/>); },
   unmount() { mounted?.unmount();mounted=null; },
   flush() { return active?.flush() || Promise.resolve(); },
+  remoteVersion(project, artifact, version) { active?.remoteVersion(project, artifact, version); },
+  commentSource() { if(!active)throw Error('文档尚未加载');return active.commentSource(); },
+  locateComment(selection, quote, sourceVersion) { return active?.locateComment(selection, quote, sourceVersion); },
   submit(text) { return active?.submit(text) || Promise.resolve({handled:false}); },
   async create(project) { return api(`/api/projects/${project}/documents`,{request_id:id(),title:'未命名文档',document:[paragraph()]}); }
 };

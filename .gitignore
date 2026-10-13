@@ -37,3 +37,9 @@ output/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local metadata and internal root documents
+/.*/
+/[A-Z]*.md
+!/README.md
+ignore/

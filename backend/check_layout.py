@@ -1,6 +1,7 @@
 """Paper layout public boundary; real Typst compilation, controlled AI response."""
 import tempfile
 import base64
+from contextlib import closing
 from pathlib import Path
 import pymupdf
 from .state import Store
@@ -18,8 +19,7 @@ def rejects(call):
 
 
 def main():
-    with tempfile.TemporaryDirectory() as directory:
-        store = Store(Path(directory) / 'state.sqlite3')
+    with tempfile.TemporaryDirectory() as directory, closing(Store(Path(directory) / 'state.sqlite3')) as store:
         project = store.create_project('论文排版验证')
         class Model:
             calls = 0

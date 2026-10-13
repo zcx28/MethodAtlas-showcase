@@ -38,7 +38,7 @@ const {chromium} = require('playwright');
     assert.equal(await page.locator('.conversation-row').first().evaluate(node => node.getBoundingClientRect().height),36,'conversation is one compact row');
     const input = page.locator('#chat-input');
     const small = await input.evaluate(node => node.getBoundingClientRect().height);
-    assert.equal(small,40,'empty input is compact');
+    assert.equal(small,72,'welcome input leaves room for a research question');
     await input.fill('第一行\n第二行\n第三行\n第四行');
     assert.ok(await input.evaluate(node => node.getBoundingClientRect().height) > small,'input grows with content');
     await input.fill('请梳理这篇论文的方法');
@@ -53,7 +53,7 @@ const {chromium} = require('playwright');
     const first = await ring.evaluate(node => getComputedStyle(node,'::before').transform);
     await page.waitForTimeout(180);
     assert.notEqual(await ring.evaluate(node => getComputedStyle(node,'::before').transform),first,'ring really rotates');
-    assert.equal(await page.locator('#chat-log .task-marker[data-state=running]').count(),1);
+    assert.equal(await page.locator('#chat-log .execution-record[data-running=true]').count(),1);
     // A different conversation stays current while the first finishes in the background.
     await page.locator('.conversation-row[data-id=other]').click();
     const beforePoll = requests;
@@ -78,7 +78,7 @@ const {chromium} = require('playwright');
     const copy = page.locator('[data-action=copy-answer][data-id=a]');
     await copy.click();
     await page.getByRole('button',{name:'已复制',exact:true}).waitFor();
-    assert.equal(await page.evaluate(() => navigator.clipboard.readText()),answer);
+    assert.equal((await page.evaluate(() => navigator.clipboard.readText())).replaceAll('\r\n','\n'),answer);
     assert.equal(await copy.locator('svg path').getAttribute('d'),'m5 12 4 4L19 6');
     await page.waitForTimeout(1900);
     assert.equal(await copy.getAttribute('aria-label'),'复制回答');
@@ -86,6 +86,37 @@ const {chromium} = require('playwright');
     await copy.click();
     await page.getByText('复制失败，请选择回答文字后复制。',{exact:true}).waitFor();
     assert.equal(await copy.getAttribute('aria-label'),'复制回答','failure must not show a check');
+    // Save only the answer, keep source references and reuse the saved note on subsequent clicks.
+    const note=page.locator('[data-action=save-answer][data-id=a]');
+    assert.equal(await note.locator('..').getAttribute('class'),'answer-actions');
+    assert.equal(await note.locator('..').getByRole('button').count(),2,'no feedback buttons');
+    await note.hover();
+    await page.waitForTimeout(350);
+    assert.equal(await note.evaluate(n=>getComputedStyle(n).backgroundColor),'rgb(234, 234, 234)');
+    assert.ok(await note.evaluate(n=>Number(getComputedStyle(n,'::after').opacity)>.95));
+    const referenceDoc=await page.evaluate(()=>answerNoteDocument({text:'# 结论\n**有依据**[cite:source]',task:{citations:[{id:'source',title:'论文',page:2}],files:[]}}));
+    assert.equal(referenceDoc[0].type,'h1');
+    assert.deepEqual(referenceDoc[0].children,[{text:'结论'}],'source appendix is not repeated per paragraph');
+    assert.deepEqual(referenceDoc[1].children,[{text:'有依据',bold:true},{type:'citation',citation_id:'source',children:[{text:''}]}]);
+    let saves=0,request,release;
+    const gate=new Promise(resolve=>release=resolve);
+    await page.route('**/api/projects/p/documents',async route=>{
+      saves++; request=route.request().postDataJSON();
+      if(saves===1)return route.fulfill({status:503,json:{error:'保存暂时失败，请重试。'}});
+      await gate;return route.fulfill({json:{artifact_id:'saved-note'}});
+    });
+    await note.click();await page.getByText('保存暂时失败，请重试。',{exact:true}).waitFor();
+    assert.equal(await note.isEnabled(),true);
+    await note.click();
+    assert.equal(await note.isEnabled(),false);
+    await page.evaluate(()=>renderChat());
+    assert.equal(await note.isEnabled(),false,'polling cannot start a duplicate save');
+    release();await page.getByRole('button',{name:'打开笔记',exact:true}).waitFor();
+    assert.equal(request.request_id,'answer-note:a');assert.equal(request.document.map(n=>n.children.map(c=>c.text).join('')).join('\n')+'\n',answer);
+    assert.equal(saves,2,'one failure and one successful retry');
+    await page.evaluate(()=>{window.originalLoadArtifact=loadArtifact;loadArtifact=async id=>{window.openedNote=id;};});
+    await note.click();assert.equal(await page.evaluate(()=>window.openedNote),'saved-note');assert.equal(saves,2);
+    await page.evaluate(()=>{loadArtifact=window.originalLoadArtifact;});
     // A new task can produce a new reminder even after the previous reply was read.
     task.id = 'second-task'; task.status = 'running';
     await page.reload();
@@ -100,6 +131,11 @@ const {chromium} = require('playwright');
     for (const state of ['waiting','failed','interrupted','stopped','queued','running']) {
       task.status = state;
       await page.reload();
+      if (['failed','interrupted'].includes(state)) {
+        await page.locator('.conversation-row[data-id=c] .conversation-note').waitFor();
+        assert.equal(await ring.count(),0,'failure is a plain explanation, not a success marker');
+        continue;
+      }
       await page.locator(`.conversation-row[data-id=c] [data-state=${state}]`).waitFor();
       const animation = await ring.evaluate(node => getComputedStyle(node,'::before').animationName);
       assert.equal(animation,state === 'running' ? 'status-spin' : 'none',state);
@@ -117,13 +153,12 @@ const {chromium} = require('playwright');
     assert.equal(await ring.getAttribute('data-state'),'idle','completion while viewing needs no unread reminder');
     assert.ok(Math.abs(await log.evaluate(node => node.scrollTop)-top)<2,'new answer does not steal scroll');
     assert.equal(await page.locator('[data-message-id=next]').evaluate(node => getComputedStyle(node).animationName),'message-enter');
-    // A real disclosure click uses the existing native expand/collapse transition.
+    // A real disclosure click expands the default-collapsed process.
     task.plan = [{id:'step',title:'梳理方法',status:'completed',summary:'已核对'}];
     task.status = 'running';
     await page.reload();
     await page.locator('.execution-record').first().waitFor();
     const disclosure = page.locator('.execution-record').first();
-    await disclosure.locator('summary').first().click();
     assert.equal(await disclosure.getAttribute('open'),null);
     await disclosure.locator('summary').first().click();
     assert.notEqual(await disclosure.getAttribute('open'),null);

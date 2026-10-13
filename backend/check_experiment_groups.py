@@ -2,7 +2,7 @@
 import json
 import os
 from pathlib import Path
-import tempfile
+from .check_support import temporary_directory
 import threading
 from http.server import ThreadingHTTPServer
 from urllib.request import Request, urlopen
@@ -24,10 +24,10 @@ def harness_loop(service, project, conversation, server, folder):
     calls=[]; stage=[0]; restart_ready=threading.Event(); restarted=False
     # Three Harness turns: submit baseline → record/submit contrast → record/report/finish.
     actions=[('read_experiment_group',{'group_id':ident}),
-             ('run_experiment_group',{'group_id':ident,'step':0,'command':'python3 baseline.py','request_id':'baseline'}),None,
+             ('run_experiment_group',{'group_id':ident,'step':0,'command':'python3 baseline.py','request_id':'baseline','kind':'run'}),None,
              ('record_experiment_result',{'group_id':ident,'result_path':'result.csv','summary':'baseline=0.75，待比较'}),
              ('complete_experiment_step',{'group_id':ident,'step':0,'summary':'baseline已完成'}),
-             ('run_experiment_group',{'group_id':ident,'step':1,'command':'python3 contrast.py','request_id':'contrast'}),None,
+             ('run_experiment_group',{'group_id':ident,'step':1,'command':'python3 contrast.py','request_id':'contrast','kind':'run'}),None,
              ('record_experiment_result',{'group_id':ident,'result_path':'result.csv','summary':'对照=0.75，未显示优势'}),
              ('write_file',{'kind':'docx','title':'实验组结果分析','content':'baseline和对照均为0.75。未显示优势，不支持优于baseline的主张。真实服务器数据尚未验收。','citation_ids':[]}),
              ('complete_experiment_step',{'group_id':ident,'step':1,'summary':'对照完成，负结果保留'}),None]
@@ -95,7 +95,7 @@ def harness_loop(service, project, conversation, server, folder):
 
 def main():
     saved = dict(os.environ)
-    with tempfile.TemporaryDirectory() as temporary:
+    with temporary_directory() as temporary:
         folder = Path(temporary)
         fixture(folder)
         os.environ['REMOTE_FIXTURE_PORT'] = '22'
@@ -131,8 +131,33 @@ def main():
             assert len(api(f'/api/projects/{project}/remote')['groups']) == 1
             confirmed = api(root+'/'+draft['id']+'/confirm', {'digest':draft['digest']})
             assert confirmed['status'] == 'active'
-            from .agent import ProjectTools
+            # Validate the HTTP upload boundary without writing to a real SSH host.
+            from unittest.mock import patch
+            bridge = service.remote.bridge
+            uploads = []
+            def upload_bridge(action, body=None):
+                if action != 'workspace':
+                    return bridge(action, body)
+                uploads.append(body)
+                return {'path':'limit.txt','diff':'fixture'}
+            with patch.object(service.remote, 'bridge', side_effect=upload_bridge):
+                api(root+'/'+draft['id']+'/upload', {'path':'limit.txt','content':'a'*65536,'before_sha256':''})
+                assert len(uploads) == 1
+                assert len(uploads[0]['content'].encode('utf-8')) == 65536
+                reject(root+'/'+draft['id']+'/upload', {'path':'limit.txt','content':'a'*65537,'before_sha256':''})
+                reject(root+'/'+draft['id']+'/upload', {'path':'limit.txt','content':'中'*21846,'before_sha256':''})
+                reject(root+'/'+draft['id']+'/upload', {'path':'limit.txt','content':'a\0b','before_sha256':''})
+                assert len(uploads) == 1, 'invalid content reached the remote transport'
+            from .agent import ProjectTools, TOOLS
+            definition = next(t[2] for t in TOOLS if t[0] == 'run_experiment_group')
+            assert 'kind' in definition['required']
             tools = ProjectTools(service.store, {'id':'group-check','project_id':project,'conversation_id':conversation})
+            setup = tools.run_experiment_group(draft['id'], step=0, command='ls -la /source', request_id='inspect-source', kind='setup')
+            (folder/'complete').touch()
+            api(f'/api/projects/{project}/remote/{setup["id"]}/observe',{})
+            assert service.remote.groups.get(project,draft['id'])['runs'][-1]['purpose']=='setup'
+            assert not service.remote.groups.get(project,draft['id'])['runs'][-1].get('evidence')
+            (folder/'complete').unlink()
             run = tools.run_experiment_group(draft['id'], step=0, command='python3 baseline.py', request_id='baseline-1')
             duplicate = tools.run_experiment_group(draft['id'], step=0, command='python3 baseline.py', request_id='baseline-1')
             assert duplicate['id'] == run['id']

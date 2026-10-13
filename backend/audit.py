@@ -40,6 +40,9 @@ def baseline(tools):
     if reference:
         item = store.artifact(tools.project, reference['artifact_id'])
         version = next((v for v in item['versions'] if v['id'] == reference['version_id']), None) if item else None
+        if item and item['kind'] == 'manuscript' and not version:
+            from .writing import Writing
+            version = Writing(store).version(tools.project, reference['artifact_id'], reference['version_id'])
         if not version or version['kind'] != 'manuscript':
             raise ValueError('请打开已保存的论文文档，或关闭成果后仅勾选一篇论文')
         citations = [store.citation(tools.project, c['id']) for c in version['citations'] if c['paper_id'] in tools.allowed]
@@ -82,7 +85,7 @@ def baseline(tools):
         identity = {'paper_id': paper['id'], 'version_id': paper['version_id'], 'title': paper['title']}
     if not any(t.strip() for t in locations.values()):
         raise ValueError('原稿没有可用文字，未执行核查；图像型PDF尚不支持OCR')
-    # Design limit: bounded full draft; explicit failure instead of silently omitting chapters.
+    # bounded full draft; explicit failure instead of silently omitting chapters.
     if len(json_text(locations)) > 180000:
         raise ValueError('原稿超过本次容量，请缩小为待审章节；未截断审阅')
     identity['sha256'] = hashlib.sha256(json_text(locations).encode()).hexdigest()

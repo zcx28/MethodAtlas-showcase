@@ -10,68 +10,89 @@ class ExperimentGroups:
         self.remote, self.store = remote, remote.store
         self.service = None
         self.store.run('CREATE TABLE IF NOT EXISTS experiment_groups(id TEXT PRIMARY KEY,project_id TEXT,record TEXT)')
+        from .experiment_records import ExperimentRecords
+        self.records = ExperimentRecords(self)
 
     def save(self, group):
         self.store.run('INSERT INTO experiment_groups VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record',
-                       (group['id'], group['project_id'], json_text(group)))
+                       (group['id'], group['project_id'], json_text({k:v for k,v in group.items() if k not in ('research','observations')})))
         return group
 
-    def get(self, project, ident):
+    def _get(self, project, ident):
         self.remote.project(project)
         row = self.store.one('SELECT record FROM experiment_groups WHERE id=? AND project_id=?', (ident, project))
         if not row:
             raise ValueError('实验组不属于此项目')
         return json.loads(row['record'])
 
-    def list(self, project):
-        self.remote.project(project)
-        return [json.loads(r['record']) for r in self.store.all('SELECT record FROM experiment_groups WHERE project_id=? ORDER BY rowid DESC', (project,))]
+    def get(self, project, ident, user=None):
+        group = self._get(project, ident)
+        self.remote.access(user, project, group['conversation_id'])
+        return {**group, **self.records.view(user,group)}
 
-    def prepare(self, project, body):
-        from .remote import text
-        self.remote.project(project)
-        if body.keys() - {'conversation_id','server_id','directory','title','plan','steps','resources','network','gpu_devices','max_seconds','max_storage_mb'}:
-            raise ValueError('实验组包含未知字段')
-        conversation = body.get('conversation_id')
-        if not self.store.one('SELECT 1 FROM conversations WHERE id=? AND project_id=?', (conversation, project)):
-            raise ValueError('对话不属于此项目')
-        server = next((s for s in self.remote.servers()['servers'] if s['id'] == body.get('server_id')), None)
-        if not server:
-            raise ValueError('请选择已登记服务器')
-        directory = text(body.get('directory'), 1000)
-        path = PurePosixPath(directory)
-        if not path.is_absolute() or '..' in path.parts or str(path) != directory or directory == '/':
-            raise ValueError('需要已有、非根目录的 Linux 绝对路径')
-        steps = body.get('steps')
-        if not isinstance(steps, list) or not 1 <= len(steps) <= 50 or any(not isinstance(s,str) or not s.strip() or len(s)>1000 for s in steps) or len(set(steps)) != len(steps):
-            raise ValueError('需要1–50个不重复实验步骤')
-        network = body.get('network', False)
-        devices = body.get('gpu_devices', [])
-        if type(network) is not bool or not isinstance(devices,list) or any(type(d) is not int or not 0 <= d <= 63 for d in devices) or len(set(devices)) != len(devices):
-            raise ValueError('网络权限或 GPU 编号无效')
-        limits = {}
-        for key in ('max_seconds','max_storage_mb'):
-            value = body.get(key)
-            if value is not None and (type(value) is not int or not 1 <= value <= 2**31-1):
-                raise ValueError('实验组额度必须为正整数或留空')
-            limits[key] = value
-        spec = {'server':server, 'connection':self.remote.bridge('resolve',server), 'directory':directory,
-                'title':text(body.get('title'),200), 'plan':text(body.get('plan'),12000), 'steps':steps,
-                'resources':text(body.get('resources',''),1000,empty=True), 'network':network,
-                'gpu_devices':devices, **limits}
-        group = {'id':new_id('group'),'project_id':project,'conversation_id':conversation,'spec':spec,
-                 'digest':hashlib.sha256(json_text(spec).encode()).hexdigest(), 'status':'awaiting_confirmation',
-                 'created':now(), 'runs':[], 'completed_steps':[], 'changes':[], 'wake':0, 'last_task':None, 'message':''}
-        return self.save(group)
+    def list(self, project, user=None):
+        self.remote.access(user, project)
+        groups = [json.loads(r['record']) for r in self.store.all('SELECT record FROM experiment_groups WHERE project_id=? ORDER BY rowid DESC', (project,))]
+        return [{**group, **self.records.view(user,group)} for group in groups if not self.remote.online or not group.get('conversation_id') or self.store.collaboration.visible(user, 'conversation', group['conversation_id'])]
+
+    def prepare(self, project, body, user=None):
+        with self.remote.lock:
+            from .remote import text
+            self.remote.project(project)
+            if body.keys() - {'conversation_id','server_id','directory','title','plan','steps','resources','network','gpu_devices','max_seconds','max_storage_mb'}:
+                raise ValueError('实验组包含未知字段')
+            conversation = body.get('conversation_id')
+            if not self.store.one('SELECT 1 FROM conversations WHERE id=? AND project_id=?', (conversation, project)):
+                raise ValueError('对话不属于此项目')
+            server = next((s for s in self.remote.servers()['servers'] if s['id'] == body.get('server_id')), None)
+            if not server:
+                raise ValueError('请选择已登记服务器')
+            self.remote.access(user, project, conversation, server['id'])
+            directory = text(body.get('directory'), 1000)
+            path = PurePosixPath(directory)
+            if not path.is_absolute() or '..' in path.parts or str(path) != directory or directory == '/':
+                raise ValueError('需要已有、非根目录的 Linux 绝对路径')
+            steps = body.get('steps')
+            if not isinstance(steps, list) or not 1 <= len(steps) <= 50 or any(not isinstance(s,str) or not s.strip() or len(s)>1000 for s in steps) or len(set(steps)) != len(steps):
+                raise ValueError('需要1–50个不重复实验步骤')
+            network = body.get('network', False)
+            devices = body.get('gpu_devices', [])
+            if type(network) is not bool or not isinstance(devices,list) or any(type(d) is not int or not 0 <= d <= 63 for d in devices) or len(set(devices)) != len(devices):
+                raise ValueError('网络权限或 GPU 编号无效')
+            limits = {}
+            for key in ('max_seconds','max_storage_mb'):
+                value = body.get(key)
+                if value is not None and (type(value) is not int or not 1 <= value <= 2**31-1):
+                    raise ValueError('实验组额度必须为正整数或留空')
+                limits[key] = value
+            spec = {'server':server, 'connection':self.remote.bridge('resolve',server), 'directory':directory,
+                    'title':text(body.get('title'),200), 'plan':text(body.get('plan'),12000), 'steps':steps,
+                    'resources':text(body.get('resources',''),1000,empty=True), 'network':network,
+                    'gpu_devices':devices, **limits}
+            group = {'id':new_id('group'),'project_id':project,'conversation_id':conversation,'spec':spec,
+                     'digest':hashlib.sha256(json_text(spec).encode()).hexdigest(), 'status':'awaiting_confirmation',
+                     'created_by':user['id'] if user else None, 'created':now(), 'runs':[], 'completed_steps':[], 'changes':[], 'wake':0, 'last_task':None, 'message':''}
+            return self.save(group)
+
 
     def connection(self, group):
+        self.executable(group)
         spec = group['spec']
         server = next((s for s in self.remote.servers()['servers'] if s['id'] == spec['server']['id']), None)
         if server != spec['server'] or self.remote.bridge('resolve',server) != spec['connection']:
             raise ValueError('SSH 配置已变化，请创建新授权')
 
-    def active(self, project, ident):
-        group = self.get(project, ident)
+    @staticmethod
+    def executable(group):
+        if group.get('mode') == 'external':
+            raise ValueError('外部实验仅保存成员记录，不能作为服务器执行授权')
+
+    def active(self, project, ident, user=None):
+        group = self.get(project, ident, user=user)
+        self.executable(group)
+        self.remote.access(user, project, group['conversation_id'], group['spec']['server']['id'], execute=True)
+        if self.remote.online:
+            self.remote.access(self.remote.actor(group.get('authorized_by')), project, group['conversation_id'], group['spec']['server']['id'], execute=True)
         if group['status'] != 'active':
             raise ValueError('实验组未授权或已暂停/结束')
         self.connection(group)
@@ -84,11 +105,13 @@ class ExperimentGroups:
         return group
 
     def busy(self, group):
-        return any(self.remote.get(group['project_id'],r['id'])['status'] in ('submitting','queued','running','unknown') for r in group['runs'])
+        return any(self.remote._get(group['project_id'],r['id'])['status'] in ('submitting','queued','running','unknown') for r in group['runs'])
 
-    def control(self, project, ident, action, body):
+    def control(self, project, ident, action, body, user=None):
         with self.remote.lock:
-            group = self.get(project, ident)
+            group = self.get(project, ident, user=user)
+            self.executable(group)
+            self.remote.access(user, project, group['conversation_id'], group['spec']['server']['id'], execute=True)
             if body != {'digest':group['digest']}:
                 raise ValueError('授权内容已变化，请重新预览')
             if action not in ('confirm','pause','resume'):
@@ -112,19 +135,28 @@ class ExperimentGroups:
             if check.get('sandbox') != 'bubblewrap':
                 raise ValueError('远端缺少可用的执行隔离；未开启自主实验')
             if group['status'] == 'active':
+                self.start_session(group)
                 return group
             if 'authorized_at' not in group:
                 group['authorized_at'] = now()
                 from datetime import datetime, timezone
                 seconds = group['spec'].get('max_seconds')
                 group['deadline'] = datetime.now(timezone.utc).timestamp() + seconds if seconds else None
-            group.update(status='active',message='',wake=group['wake']+1,last_task=None)
-            return self.save(group)
+            group.update(status='active',message='',wake=group['wake']+1,last_task=None,authorized_by=user['id'] if user else None)
+            self.save(group)
+            self.start_session(group)
+            return group
 
-    def workspace(self, project, ident, body):
+    def start_session(self, group):
+        if self.remote.session_groups is not None:
+            self.remote.session_groups.add(group['id'])
+            self.remote.session_runs.update(run['id'] for run in group['runs'])
+            self.remote.start()
+
+    def workspace(self, project, ident, body, user=None):
         from .remote import text
         with self.remote.lock:
-            group = self.active(project, ident)
+            group = self.active(project, ident, user=user)
             if self.busy(group):
                 raise ValueError('先等待当前任务终态，再读取或修改工作文件')
             operation = body.get('operation')
@@ -134,7 +166,9 @@ class ExperimentGroups:
             if PurePosixPath(path).is_absolute() or '..' in PurePosixPath(path).parts:
                 raise ValueError('路径必须在实验组工作目录内')
             if operation == 'write':
-                text(body.get('content'),60000,empty=True)
+                content = text(body.get('content'),65536,empty=True)
+                if len(content.encode('utf-8')) > 65536:
+                    raise ValueError('文本代码文件不能超过64 KiB')
                 if not isinstance(body.get('before_sha256'),str):
                     raise ValueError('修改须提供原文件哈希；新建使用空字符串')
             value = self.remote.bridge('workspace',{'id':ident,'spec':group['spec'],'digest':group['digest'],**body})
@@ -143,10 +177,10 @@ class ExperimentGroups:
                 self.save(group)
             return value
 
-    def run(self, project, ident, body):
+    def run(self, project, ident, body, user=None):
         from .remote import text
         with self.remote.lock:
-            group = self.active(project,ident)
+            group = self.active(project,ident, user=user)
             if body.keys() - {'step','command','request_id','kind','repair_of','configuration'}:
                 raise ValueError('实验运行包含未知字段')
             step = body.get('step')
@@ -162,23 +196,23 @@ class ExperimentGroups:
             if prior:
                 if prior['fingerprint'] != fingerprint:
                     raise ValueError('同一运行标识已用于不同内容')
-                item = self.remote.get(project,prior['id'])
-                return self.remote.confirm(project,item['id'],{'digest':item['digest']}) if item['status'] in ('awaiting_confirmation','unknown','submitting') else item
+                item = self.remote._get(project,prior['id'])
+                return self.remote.confirm(project,item['id'],{'digest':item['digest']}, user=user) if item['status'] in ('awaiting_confirmation','unknown','submitting') else item
             if self.busy(group):
                 raise ValueError('先等待或重连当前任务，不得重复启动')
             if group['runs']:
                 previous=group['runs'][-1]
-                if previous.get('purpose',previous['kind'])!='setup' and self.remote.get(project,previous['id'])['status']=='succeeded' and not previous.get('evidence'):
+                if previous.get('purpose',previous['kind'])!='setup' and self.remote._get(project,previous['id'])['status']=='succeeded' and not previous.get('evidence'):
                     raise ValueError('先保存上一运行的真实指标证据，再启动后续实验')
             if step in group['completed_steps']:
                 raise ValueError('该步骤已完成；扩大计划须另行确认')
             attempt = 0
             latest = next((r for r in reversed(group['runs']) if r['step'] == step),None)
-            if latest and self.remote.get(project,latest['id'])['status'] == 'failed':
+            if latest and self.remote._get(project,latest['id'])['status'] == 'failed':
                 if kind != 'repair' or body.get('repair_of') != latest['id']:
                     raise ValueError('此步骤上次运行失败；须沿该记录修复，不得通过新运行绕过计数')
             if kind == 'repair':
-                if not latest or latest['id'] != body.get('repair_of') or self.remote.get(project,latest['id'])['status'] != 'failed':
+                if not latest or latest['id'] != body.get('repair_of') or self.remote._get(project,latest['id'])['status'] != 'failed':
                     raise ValueError('只能修复同一步骤最新的已确认失败任务')
                 attempt = latest['attempt'] + 1
                 if attempt > 3:
@@ -190,7 +224,7 @@ class ExperimentGroups:
                        'gpu_devices':limits['gpu_devices'],'deadline':group.get('deadline'),
                        'max_storage_mb':limits.get('max_storage_mb')}
             job_id = new_id('exp')
-            spec = {'project_id':project,'server':limits['server'],'connection':limits['connection'],
+            spec = {'project_id':project,'conversation_id':group['conversation_id'],'initiated_by':user['id'] if user else None,'server':limits['server'],'connection':limits['connection'],
                     'directory':limits['directory'],'command':command,'resources':limits['resources'],
                     'configuration':text(body.get('configuration',''),10000,empty=True), 'sandbox':sandbox}
             digest = hashlib.sha256(json_text(spec).encode()).hexdigest()
@@ -199,16 +233,16 @@ class ExperimentGroups:
                            (job_id,project,json_text(spec),digest,'awaiting_confirmation','{}',now(),group['spec']['steps'][step]))
                 group['runs'].append({'id':job_id,'key':key,'fingerprint':fingerprint,'step':step,'kind':kind,'purpose':latest.get('purpose',latest['kind']) if kind=='repair' else kind,'attempt':attempt})
                 self.save(group)
-            return self.remote.confirm(project,job_id,{'digest':digest})
+            return self.remote.confirm(project,job_id,{'digest':digest}, user=user)
 
-    def record(self, project, ident, experiment_id, result_path, summary, directions=None):
+    def record(self, project, ident, experiment_id, result_path, summary, directions=None, user=None):
         """Metrics are parsed from a versioned JSON object or CSV, never supplied as invented numbers."""
         from .remote import text
         import csv
         import io
         import math
         with self.remote.lock:
-            group = self.active(project,ident)
+            group = self.active(project,ident, user=user)
             run = next((r for r in group['runs'] if r['id'] == experiment_id),None)
             if not run:
                 raise ValueError('运行不属于此实验组')
@@ -218,11 +252,11 @@ class ExperimentGroups:
                 return {'record':run['record'],'evidence':run['evidence'],'summary':run['summary']}
             if self.busy(group) or group['runs'][-1]['id']!=experiment_id:
                 raise ValueError('须在后续运行开始前固定当前结果，避免读取被覆盖的结果')
-            item = self.remote.observe(project,experiment_id)
+            item = self.remote.observe(project,experiment_id, user=user)
             if item['status'] not in ('succeeded','failed'):
                 raise ValueError('仅记录已确认终态的结果')
-            result = self.remote.fetch(project,experiment_id,{'path':result_path})
-            raw, _ = self.remote.result_file(project,result['id'])
+            result = self.remote.fetch(project,experiment_id,{'path':result_path}, user=user)
+            raw, _ = self.remote.result_file(project,result['id'], user=user)
             if result_path.endswith('.json'):
                 metrics = json.loads(raw)
             elif result_path.endswith('.csv'):
@@ -239,7 +273,7 @@ class ExperimentGroups:
                 if isinstance(value,str):
                     try:
                         metrics[key] = float(value)
-                    except ValueError:
+                    except (ValueError, PermissionError):
                         text(value,1000)
                 if type(metrics[key]) not in (str,int,float) or isinstance(metrics[key],(int,float)) and not math.isfinite(metrics[key]):
                     raise ValueError('指标必须为有限数值或文字')
@@ -254,8 +288,8 @@ class ExperimentGroups:
             self.save(group)
             return {'record':outcome['experiment'],'evidence':result,'summary':summary}
 
-    def chart(self, project, ident, metric):
-        group=self.get(project,ident)
+    def chart(self, project, ident, metric, user=None):
+        group=self.get(project,ident, user=user)
         rows=[]
         for run in group['runs']:
             record=run.get('record',{})
@@ -266,10 +300,10 @@ class ExperimentGroups:
             raise ValueError('没有可绘制的非负数值指标，完整数值见结果表')
         return self.remote.bridge('metric-chart',{'metric':metric,'rows':rows})
 
-    def finish_step(self, project, ident, step, summary):
+    def finish_step(self, project, ident, step, summary, user=None):
         from .remote import text
         with self.remote.lock:
-            group = self.active(project,ident)
+            group = self.active(project,ident, user=user)
             if type(step) is not int or not 0 <= step < len(group['spec']['steps']):
                 raise ValueError('实验步骤无效')
             if self.busy(group):
@@ -290,12 +324,15 @@ class ExperimentGroups:
             return
         with self.remote.lock:
             for row in self.store.all('SELECT project_id,id FROM experiment_groups'):
-                group = self.get(row['project_id'],row['id'])
+                if self.remote.session_groups is not None and row['id'] not in self.remote.session_groups:
+                    continue
+                group = self._get(row['project_id'],row['id'])
                 if group['status'] != 'active':
                     continue
                 try:
-                    group=self.active(group['project_id'],group['id'])
-                except ValueError:
+                    user = self.remote.actor(group.get('authorized_by'))
+                    group=self.active(group['project_id'],group['id'], user=user)
+                except (ValueError, PermissionError):
                     if group['status']=='active':
                         group.update(status='paused',message='授权或额度需重新检查，请查看设置后恢复')
                         self.save(group)
@@ -306,7 +343,7 @@ class ExperimentGroups:
                 if last and last['status']=='interrupted':
                     if self.busy(group):
                         continue
-                    self.service.control(group['project_id'],group['conversation_id'],last['id'],'resume',{})
+                    self.service.control(group['project_id'],group['conversation_id'],last['id'],'resume',{}, user=user)
                     continue
                 if last and last['status'] in ('failed','stopped'):
                     group.update(status='paused',message='Agent 任务中断；确认恢复后继续，远程任务未被终止')
@@ -316,24 +353,24 @@ class ExperimentGroups:
                     continue
                 if group['runs']:
                     latest = group['runs'][-1]
-                    item = self.remote.get(group['project_id'],latest['id'])
+                    item = self.remote._get(group['project_id'],latest['id'])
                     if latest['attempt'] >= 3 and item['status'] == 'failed':
                         group.update(status='paused',message='连续三次修复失败，请求人工处理')
                         self.save(group)
                         continue
-                signature = json_text([group['wake'],[[r['id'],self.remote.get(group['project_id'],r['id'])['status']] for r in group['runs']]])
+                signature = json_text([group['wake'],[[r['id'],self.remote._get(group['project_id'],r['id'])['status']] for r in group['runs']]])
                 if signature == group.get('scheduled_signature'):
                     group.update(status='paused',message='Agent 未提交下一项任务或完成计划，请检查对话后恢复')
                     self.save(group)
                     continue
-                if not self.service.research.key:
+                if not self.remote.online and not self.service.research.key:
                     continue
                 key = hashlib.sha256(signature.encode()).hexdigest()
                 # Store enqueue and its identity in one transaction, before scheduling.
                 with self.store.transaction():
                     value = self.service.message(group['project_id'],group['conversation_id'],
                         {'text':f"继续已授权实验组 {group['id']}。先读取实验组与真实任务状态，在已确认计划内执行下一步或分析结果。",
-                         'client_message_id':f"experiment:{group['id']}:{key}"},schedule=False)
+                         'client_message_id':f"experiment:{group['id']}:{key}"},schedule=False,user=user)
                     task = self.store.task(value['task_id'])
                     if task['status'] == 'queued':
                         self.store.run('UPDATE tasks SET refs=?,checkpoint=? WHERE id=?',

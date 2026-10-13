@@ -1,253 +1,302 @@
-// Real subscriptions and pending papers share the project's durable API state.
+// Discovery stays separate from the materials explicitly accepted for research.
 (() => {
-  let data = null, projectId = null, selectedId = null, loading = false, busy = false, dirty = false, error = '';
-  const selectedSubscription = () => data?.subscriptions.find(s => s.id === selectedId);
-  const stamp = value => value ? new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}) : '尚未运行';
+  let data = null, projectId = null, selectedId = null, loading = false, busy = false, error = '';
+  let search = null, searchMode = false, searching = false, searchError = '', query = '', recommendationScroll = 0;
+  const retained = new Set(), previousChoices = new Map(), drafts = new Map();
+  const expandedSearchResults = new Set();
   const endpoint = project => `/api/projects/${encodeURIComponent(project)}/subscription`;
-  const safeURL = value => { try { const u = new URL(value); return ['https:','http:'].includes(u.protocol) ? esc(u.href) : ''; } catch { return ''; } };
-  const stateLabel = {running:'检索中',succeeded:'完成',partial:'部分完成',failed:'本轮说明'};
-  const names = ids => (ids || []).map(id => data?.subscriptions.find(s => s.id === id)?.name || '历史订阅').join('、');
+  const post = (project, action, body) => api(endpoint(project) + '/' + action, {method:'POST',body:JSON.stringify(body)});
+  const selectedSubscription = () => data?.subscriptions.find(s => s.id === selectedId);
+  const keyOf = ({run,candidate}) => `${run.wait_id}:${candidate.id}`;
+  const safeURL = value => { try { const url = new URL(value); return ['https:','http:'].includes(url.protocol) ? esc(url.href) : ''; } catch { return ''; } };
   const entries = () => (data?.runs || []).flatMap(run => (run.payload?.candidates || []).map(candidate => ({run,candidate})));
-  const pending = () => entries().filter(({candidate:c}) => ['pending','saved'].includes(c.choice));
-  const stateKey = (kind, project) => `methodatlas:subscription-${kind}:${project}`;
-  const readSet = key => {
-    try { const value = JSON.parse(localStorage.getItem(key) || '[]'); return new Set(Array.isArray(value) ? value.filter(item => typeof item === 'string') : []); }
-    catch { return new Set(); }
-  };
-  const writeSet = (key, value) => { try { localStorage.setItem(key, JSON.stringify([...value])); } catch {} };
-  const pendingCollapsed = () => { try { return localStorage.getItem(stateKey('collapsed',projectId)) === '1'; } catch { return false; } };
-  const isUnread = items => {
-    const seen = readSet(stateKey('seen',projectId));
-    return items.some(({candidate}) => !seen.has(candidate.id));
-  };
+  const searchEntries = () => (search?.waits || []).flatMap(wait => {
+    const shown = new Set((wait.payload.recommendation?.papers || []).map(p => p.candidate_id));
+    return (wait.payload.candidates || []).filter(c => shown.has(c.id)).map(candidate => ({run:{wait_id:wait.id,payload:wait.payload},candidate}));
+  });
+  const pending = c => ['pending','saved'].includes(c.choice);
+  const sourceLabel = source => ({arxiv:'arXiv',openalex:'OpenAlex',semantic_scholar:'Semantic Scholar',doi:'DOI'}[source] || source || '来源未提供');
+  const fulltextLabel = value => ({downloaded:'全文已获取',provided:'全文已提供',pending:'全文获取中',failed:'全文获取失败',unavailable:'全文暂不可用'})[value] || '尚未获取全文';
+  const dayOf = value => { const date = new Date(value); return Number.isNaN(date.valueOf()) ? '' : date.toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'}); };
 
-  document.head.insertAdjacentHTML('beforeend', `<style>
-    .subscription-pending{margin:0.875rem 0 1.25rem;padding:0.875rem;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-2)}
-    .subscription-pending>summary{margin-bottom:0.5rem}.subscription-pending-title{margin:0;font-size:0.9375rem;font-weight:600;color:var(--ink)}.subscription-unread-dot{width:0.4375rem;height:0.4375rem;border-radius:50%;background:var(--danger);flex:none}
-    .subscription-candidate-list{display:flex;flex-direction:column;gap:0.5rem}
-    .subscription-candidate{width:100%;cursor:pointer}.subscription-candidate:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-    .subscription-candidate-body{display:flex;flex-direction:column;gap:0.1875rem;min-width:0;flex:1;padding:2px 0}
-    .subscription-candidate-body strong{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.875rem;font-weight:500;line-height:normal}
-    .subscription-candidate-body .paper-meta{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .subscription-detail-dialog{width:min(38.75rem,calc(100vw - 2rem))}.subscription-detail-dialog .modal-head{padding-bottom:0.875rem}
-    .subscription-detail-title{overflow-wrap:anywhere}.subscription-detail-dialog .dialog-facts{margin-bottom:2px}
-    .subscription-detail-copy{margin:0;font-size:0.875rem;line-height:1.8;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
-    .subscription-detail-dialog .dialog-section{margin-top:1.125rem;padding-top:0.9375rem}.subscription-detail-dialog .dialog-section h3{margin-bottom:0.5rem}
-    .subscription-prompt{white-space:pre-wrap;font:inherit;line-height:1.7;margin:0.625rem 0}.subscription-form textarea{min-height:5.5rem;resize:vertical}.subscription-form{display:grid;gap:0.875rem}.subscription-form label{display:grid;gap:0.375rem}.subscription-status{font-size:0.8125rem;line-height:1.7;color:var(--muted)}
-    .subscription-error{color:var(--ink)}.subscription-count{margin-left:0.25rem}.subscription-remove{font-size:0.75rem;padding:0.25rem 0.375rem}
-  </style>`);
-
-  const sourceLabel = source => ({arxiv:'arXiv',openalex:'OpenAlex',doi:'DOI'}[source] || source || '论文来源');
-  const dateLabel = value => value ? String(value).slice(0,10).replaceAll('-', '.') : '日期待定';
-  const choiceButtons = c => ['pending','saved'].includes(c.choice)
-    ? `<button type="button" class="primary" data-sub-choice="collected">加入资料</button><button type="button" data-sub-choice="rejected">不再推荐</button>`
-    : c.choice === 'rejected' ? '<button type="button" data-sub-choice="pending">恢复待确认</button>'
-    : c.choice === 'removed' ? '<button type="button" data-sub-choice="collected">恢复到资料</button>'
-    : '<button type="button" data-sub-choice="removed">移出资料</button>';
-
-  function card({run,candidate:c}) {
-    const p = c.preferred || {};
-    const label = {pending:'待确认',saved:'待确认',rejected:'已屏蔽',collected:'已加入资料',removed:'已移出资料'}[c.choice];
-    return `<article class="paper-row subscription-candidate" role="button" tabindex="0" aria-label="查看论文详情：${esc(p.title || '未命名论文')}" data-sub-wait="${esc(run.wait_id)}" data-sub-candidate="${esc(c.id)}">${icon('file')}<span class="paper-link subscription-candidate-body"><strong>${esc(p.title || '未命名论文')}</strong><span class="paper-meta">${esc(label)} · ${esc(sourceLabel(p.source))}</span></span></article>`;
+  function card(item) {
+    const {run,candidate:c} = item, p = c.preferred || {}, key = keyOf(item);
+    const reason = run.payload.recommendation?.papers?.find(r => r.candidate_id === c.id)?.reason;
+    const authors = (p.authors || []).slice(0,2).join(', ') + ((p.authors || []).length > 2 ? ' et al.' : '');
+    const meta = [authors,String(p.published || '').slice(0,4),p.venue || sourceLabel(p.source)].filter(Boolean).join(' · ');
+    const label = {collected:'已加入',rejected:'已忽略',removed:'已移出'}[c.choice], url = safeURL(p.url);
+    const action = pending(c)
+      ? `<button type="button" class="primary" data-sub-choice="collected" ${busy ? 'disabled' : ''}>${icon('plus')}加入文献库</button><button type="button" class="quiet" data-sub-choice="rejected" ${busy ? 'disabled' : ''}>忽略</button>`
+      : `<span class="recommendation-status">${esc(label)}</span>${previousChoices.has(key) ? `<button type="button" class="quiet" data-sub-undo ${busy ? 'disabled' : ''}>撤销</button>` : `<button type="button" class="quiet" data-sub-choice="${c.choice === 'rejected' ? 'pending' : c.choice === 'removed' ? 'collected' : 'removed'}" ${busy ? 'disabled' : ''}>${c.choice === 'rejected' ? '恢复推荐' : c.choice === 'removed' ? '恢复到文献库' : '移出文献库'}</button>`}`;
+    return `<article class="recommendation-row" data-sub-wait="${esc(run.wait_id)}" data-sub-candidate="${esc(c.id)}"><details class="recommendation-detail" data-key="${esc(key)}"><summary><span class="recommendation-title">${esc(p.title || '未命名论文')}</span>${icon('chevron')}</summary><div class="recommendation-expanded"><p>${esc(p.summary || '来源未提供摘要，可打开原文查看。')}</p><div class="recommendation-facts"><span>${esc(fulltextLabel(c.availability?.fulltext))}</span>${run.subscription_id ? `<span>来自 ${esc(data?.subscriptions.find(s => s.id === run.subscription_id)?.name || '历史订阅')}</span>` : ''}${url ? `<a href="${url}" target="_blank" rel="noreferrer">查看原文 ↗</a>` : ''}</div></div></details><p class="recommendation-meta">${esc(meta)}</p>${reason ? `<p class="recommendation-reason">${esc(reason)}</p>` : ''}<div class="recommendation-actions">${action}</div></article>`;
   }
 
-  function candidateDetailHTML({run,candidate:c}) {
-    const p = c.preferred || {};
-    const url = safeURL((p.url || '').startsWith('https://openalex.org/') ? (c.versions || []).find(v => v.source === 'arxiv' && v.url)?.url || p.url : p.url);
-    const reason = run.payload.recommendation?.papers.find(item => item.candidate_id === c.id)?.reason || '历史候选';
-    const label = {pending:'待确认',saved:'待确认',rejected:'已屏蔽',collected:'已加入资料',removed:'已移出资料'}[c.choice];
-    const fulltext = c.availability?.fulltext === 'downloaded' ? '已获取' : c.availability?.fulltext === 'not_fetched' ? '未获取' : c.availability?.fulltext || '未知';
-    const subscriptions = names(c.subscriptions || [run.subscription_id]) || '历史订阅';
-    return `<div class="modal-head"><div class="dialog-head"><div><h2 id="subscription-detail-title" class="subscription-detail-title">${esc(p.title || '未命名论文')}</h2><p class="dialog-head-summary">${esc(label)} · ${esc(sourceLabel(p.source))}</p></div><button type="button" class="icon" data-sub-detail-close aria-label="关闭论文详情" title="关闭">${icon('close')}</button></div></div><div class="modal-body"><div class="dialog-facts"><p><strong>作者</strong><span>${esc((p.authors || []).join('、') || '未提供')}</span></p><p><strong>首次发表</strong><span>${esc(dateLabel(c.first_published || p.published))}</span></p><p><strong>发现日期</strong><span>${esc(dateLabel(c.discovered_at || run.created))}</span></p><p><strong>订阅</strong><span>${esc(subscriptions)}</span></p><p><strong>全文</strong><span>${esc(fulltext)}</span></p></div>${reason ? `<section class="dialog-section"><h3>筛选理由</h3><p class="subscription-detail-copy">${esc(reason)}</p></section>` : ''}${p.summary ? `<section class="dialog-section"><h3>摘要</h3><p class="subscription-detail-copy">${esc(p.summary)}</p></section>` : ''}${url ? `<div class="dialog-actions"><a class="dialog-chip" href="${url}" target="_blank" rel="noreferrer">打开来源 ↗</a></div>` : ''}<div class="dialog-actions">${choiceButtons(c)}</div></div>`;
+  function recommendationsHTML() {
+    if (!data) return `<div class="discovery-empty"><h3>${error ? '暂时无法读取推荐' : '正在读取推荐…'}</h3>${error ? `<p role="alert">${esc(error)}</p><button data-sub-action="retry">重新读取</button>` : ''}</div>`;
+    const all = entries(), items = all.filter(i => pending(i.candidate) || retained.has(keyOf(i)));
+    const today = items.filter(i => (dayOf(i.candidate.discovered_at || i.run.created) || i.run.day) === data.today);
+    const earlier = items.filter(i => !today.includes(i)), history = all.filter(i => !pending(i.candidate) && !retained.has(keyOf(i)));
+    const latest = data.runs.find(r => r.operation === 'run');
+    const status = error || (latest?.status === 'failed' ? latest.error : latest?.status === 'partial' ? latest.warning || '部分来源未完成，已取得的论文仍可查看。' : '');
+    return `${status ? `<p class="discovery-notice" role="status">${esc(status)}<button class="quiet" data-sub-action="settings">查看设置</button></p>` : ''}<div class="discovery-section-head"><h3>今日推荐${today.length ? ` <span>${today.length}</span>` : ''}</h3><span>${esc((data.today || '').replaceAll('-','.'))}</span></div>${today.map(card).join('') || `<div class="discovery-empty"><h3>${data.subscriptions.length ? latest?.status === 'running' ? '正在寻找相关论文' : '今天暂无新推荐' : '让新论文找到你'}</h3><p>${data.subscriptions.length ? '此前未处理的论文会继续保留。也可以主动搜索。' : '设定研究方向，每天查看值得关注的新论文。'}</p>${!data.subscriptions.length ? '<button class="primary" data-sub-action="settings">设置推荐方向</button>' : ''}</div>`}${earlier.length ? `<section class="discovery-earlier"><div class="discovery-section-head"><h3>此前未处理 <span>${earlier.length}</span></h3></div>${earlier.map(card).join('')}</section>` : ''}${history.length ? `<details class="discovery-history" data-key="history"><summary>已处理 · ${history.length}</summary>${history.map(card).join('')}</details>` : ''}`;
   }
-
-  function openCandidateDetail(match) {
-    document.querySelector('.subscription-detail-dialog')?.close();
-    const dialog = document.createElement('dialog');
-    dialog.className = 'subscription-detail-dialog';
-    dialog.dataset.subWait = match.run.wait_id;
-    dialog.dataset.subCandidate = match.candidate.id;
-    dialog.setAttribute('aria-labelledby', 'subscription-detail-title');
-    dialog.innerHTML = candidateDetailHTML(match);
-    dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
-    dialog.addEventListener('close', () => dialog.remove());
-    document.body.append(dialog);
-    dialog.showModal();
-    dialog.querySelector('[data-sub-detail-close]')?.focus();
-    const seen = readSet(stateKey('seen',projectId));
-    seen.add(match.candidate.id);
-    writeSet(stateKey('seen',projectId),seen);
-    syncUnreadIndicator();
+  function searchCard(item) {
+    const {run,candidate:c} = item, p = c.preferred || {}, key = keyOf(item);
+    const title = p.title || '未命名论文', year = String(p.published || '').slice(0,4);
+    const open = expandedSearchResults.has(key), detailId = `search-result-${encodeURIComponent(key)}`;
+    const metadata = [...new Set([(p.authors || []).join(', '),p.venue,sourceLabel(p.source)].filter(Boolean))].join(' · ');
+    const reason = run.payload.recommendation?.papers?.find(r => r.candidate_id === c.id)?.reason;
+    const indexReasons = [p.source,'openalex','semantic_scholar'].map(source => `${source} · ${p.published || '日期未提供'}；${p.summary ? '摘要：' + p.summary.slice(0,180) : '来源未提供摘要。'}`);
+    const showReason = reason && reason !== p.summary && !indexReasons.includes(reason);
+    const url = safeURL(p.url), disabled = busy ? 'disabled' : '';
+    const label = {collected:'已加入',rejected:'已忽略',removed:'已移出'}[c.choice] || '已处理';
+    const action = pending(c)
+      ? `<button type="button" class="search-result-add" data-sub-choice="collected" ${disabled}>${icon('plus')}加入文献库</button>`
+      : `<div class="search-result-status recommendation-status"><span>${esc(label)}</span>${previousChoices.has(key) ? `<button type="button" class="quiet" data-sub-undo ${disabled}>撤销</button>` : ''}</div>`;
+    const secondary = pending(c)
+      ? `<button type="button" class="quiet" data-sub-choice="rejected" ${disabled}>忽略</button>`
+      : !previousChoices.has(key) ? `<button type="button" class="quiet" data-sub-choice="${c.choice === 'rejected' ? 'pending' : c.choice === 'removed' ? 'collected' : 'removed'}" ${disabled}>${c.choice === 'rejected' ? '恢复推荐' : c.choice === 'removed' ? '恢复到文献库' : '移出文献库'}</button>` : '';
+    return `<article class="recommendation-row search-result-row" data-sub-wait="${esc(run.wait_id)}" data-sub-candidate="${esc(c.id)}">
+      <div class="search-result-head"><div class="search-result-heading"><h3 class="recommendation-title">${esc(title)}</h3>${year ? `<p class="search-result-year">${esc(year)}</p>` : ''}</div>${action}<button type="button" class="search-result-toggle" data-sub-expand="${esc(key)}" aria-expanded="${open}" aria-controls="${esc(detailId)}" aria-label="${open ? '收起' : '展开'}详情：${esc(title)}"><span>${open ? '收起' : '详情'}</span>${icon('chevron')}</button></div>
+      <div class="recommendation-expanded search-result-detail" id="${esc(detailId)}" ${open ? '' : 'hidden'}><p class="recommendation-meta">${esc(metadata)}</p><div class="search-result-summary-head"><h4>摘要</h4>${p.summary?.trim() ? `<button type="button" class="search-result-translate" data-sub-translate aria-label="翻译摘要：${esc(title)}">${icon('translate')}翻译摘要</button>` : ''}</div><p>${esc(p.summary || '来源未提供摘要，可打开原文查看。')}</p>${showReason ? `<div class="search-result-reason"><h4>推荐理由</h4><p>${esc(reason)}</p></div>` : ''}<div class="recommendation-facts"><span>${esc(fulltextLabel(c.availability?.fulltext))}</span>${p.published && String(p.published).length > 4 ? `<span>发表于 ${esc(p.published)}</span>` : ''}</div><div class="search-result-detail-actions">${url ? `<a href="${url}" target="_blank" rel="noreferrer">查看原文 ↗</a>` : ''}${secondary}</div></div>
+    </article>`;
   }
-
-  const findCandidate = (waitId, candidateId) => entries().find(({run,candidate}) => run.wait_id === waitId && candidate.id === candidateId);
-  function pendingHTML() {
-    if (projectId !== current?.id || !data) return '';
-    const items = pending();
-    if (!items.length) return '';
-    const unread = isUnread(items);
-    return `<details id="subscription-pending" class="subscription-pending sub-fold" data-project="${esc(projectId)}"${pendingCollapsed() ? '' : ' open'}><summary><h3 class="subscription-pending-title">待确认 · ${items.length}</h3><span class="subscription-unread-dot" aria-hidden="true"${unread ? '' : ' hidden'}></span><span class="sr-only subscription-unread-label">${unread ? '有未看论文' : ''}</span></summary><div class="subscription-candidate-list">${items.map(card).join('')}</div></details>`;
-  }
-  function syncUnreadIndicator() {
-    const section = document.getElementById('subscription-pending');
-    if (!section) return;
-    const unread = isUnread(pending());
-    const dot = section.querySelector('.subscription-unread-dot');
-    if (dot) dot.hidden = !unread;
-    const label = section.querySelector('.subscription-unread-label');
-    if (label) label.textContent = unread ? '有未看论文' : '';
-  }
-  function renderPending() {
-    if (shellView !== 'library') return;
-    const slot = document.getElementById('subscription-pending');
-    const items = projectId === current?.id && data ? pending() : [];
-    if (!items.length) {
-      const hadFocus = slot?.contains(document.activeElement);
-      slot?.remove();
-      if (hadFocus) document.querySelector('#source-body [data-action="add-source"]')?.focus();
-      return;
-    }
-    const html = items.map(card).join('');
-    if (!slot) {
-      document.getElementById('source-body')?.insertAdjacentHTML('afterbegin',pendingHTML());
-      return;
-    }
-    const summary = slot.querySelector(':scope > summary');
-    const title = summary?.querySelector('.subscription-pending-title');
-    if (title) title.textContent = `待确认 · ${items.length}`;
-    syncUnreadIndicator();
-    const list = slot.querySelector('.subscription-candidate-list');
-    if (list && list.innerHTML !== html) {
-      const active = document.activeElement;
-      const focused = list.contains(active) ? {wait:active.dataset.subWait,candidate:active.dataset.subCandidate} : null;
-      list.innerHTML = html;
-      if (focused) {
-        const target = [...list.querySelectorAll('[data-sub-candidate]')].find(node => node.dataset.subWait === focused.wait && node.dataset.subCandidate === focused.candidate);
-        (target || summary)?.focus({preventScroll:true});
-      }
-    }
-  }
-  const baseSources = sourcesBodyHTML;
-  sourcesBodyHTML = function sourcesWithPending() { return pendingHTML() + baseSources(); };
-
-  function listHTML() {
-    return `<button type="button" class="primary sub-create" data-sub-action="create">${icon('plus')}在聊天中创建订阅</button>${error ? `<p role="status" class="subscription-error">${esc(error)}</p>` : ''}<div class="library-list cards">${(data?.subscriptions || []).map(s => `<button type="button" class="library-row card${s.id === selectedId ? ' active' : ''}" data-sub-row="${esc(s.id)}"><span class="sub-dot" data-state="${s.enabled ? 'active' : 'paused'}"></span><span class="library-row-body"><strong>${esc(s.name)}</strong><small>${s.enabled ? '已开启' : '已暂停'} · 每天 ${esc(s.time)} · 北京时间</small></span></button>`).join('') || `<p class="sub-empty">${loading ? '读取订阅中…' : '还没有订阅。在聊天中描述你要跟踪的论文。'}</p>`}</div>`;
-  }
-  function runsHTML(sub) {
-    return `<section class="memory-card"><header class="memory-head"><span>订阅日报与运行记录</span></header><div class="memory-proposal-body">${data.runs.filter(r => r.subscription_id === sub.id).map((r,i) => `<details class="sub-run" ${i === 0 ? 'open' : ''}><summary>${esc(stamp(r.created))} · ${r.automatic ? '自动定时' : r.operation === 'enable' ? '启用订阅' : r.operation === 'refresh' ? '更新策略' : '手动运行'} · ${stateLabel[r.status] || esc(r.status)}</summary><p>${r.status === 'running' ? (r.operation === 'run' ? '正在检索与筛选，完成后自动更新。' : '正在制定搜索策略，完成后自动更新。') : r.status === 'failed' ? '本轮没有取得可交付结果。' : r.operation === 'enable' ? '订阅已启用，将在设定时间开始检索。' : r.operation === 'refresh' ? '策略已更新，本轮未检索。' : r.count ? `新增 ${r.count} 篇候选，前往文献库确认。` : r.status === 'partial' ? '本轮未发现新增；来源覆盖不完整。' : '今日无新增符合条件的论文。'}</p>${r.payload ? `<small>首次发表日期范围：${esc(r.payload.from_date || '历史')} 至 ${esc(r.payload.to_date || r.day)}</small>` : ''}${r.error ? `<p role="status" class="subscription-error">${esc(r.explanation || r.error)}</p>` : ''}${r.warning ? `<p class="subscription-status">${esc(r.warning)}</p>` : ''}<ul>${r.sources.map(s => `<li>${esc(s.source)}：${s.status === 'succeeded' ? `${s.count || 0} 条候选` : '失败 / 未完成'}${s.truncated ? '（达到检索上限）' : ''}${s.error ? ' · ' + esc(s.error) : ''}</li>`).join('')}</ul>${(r.payload?.candidates || []).map(candidate => card({run:r,candidate})).join('')}</details>`).join('') || '<p>尚无运行记录。</p>'}</div></section>`;
-  }
-  function detailHTML() {
-    const sub = selectedSubscription();
-    if (!sub) return '<p class="empty-small">选择一条订阅查看设置和日报。</p>';
-    const running = data.runs.some(r => r.subscription_id === sub.id && r.status === 'running');
-    return `<section class="memory-card"><header class="memory-head"><span>订阅设置</span><span class="badge">${running ? '运行中' : sub.enabled ? '已开启' : '已暂停'}</span></header><div class="memory-proposal-body"><p class="subscription-status">${data.archived ? '项目已归档，自动任务已停止。' : sub.enabled ? `下次运行：${esc(stamp(sub.next_run))}（北京时间）` : '已暂停自动检索。'}<br>本机后台须保持运行；休眠或停止期间的检索会在恢复后补跑。</p><form id="subscription-settings" class="subscription-form" data-id="${esc(sub.id)}"><p class="subscription-status">已绑定论文：${esc((sub.materials || []).map(p => p.title).join("、") || "未选择论文，依据研究要求和日报制定策略")}</p><label>名称<input name="name" maxlength="100" required value="${esc(sub.name)}"></label><label>每天运行时间（北京时间）<input type="time" name="time" required value="${esc(sub.time)}"></label><label>研究要求<textarea name="requirements" maxlength="4000">${esc(sub.requirements)}</textarea></label><label>排除方向<textarea name="excluded" maxlength="4000">${esc(sub.excluded)}</textarea></label><button type="submit" ${busy ? 'disabled' : ''}>保存设置</button><p id="subscription-error" role="status" class="subscription-error">${esc(error)}</p></form><div class="row memory-editor-actions"><button type="button" data-sub-action="toggle" ${busy ? 'disabled' : ''}>${sub.enabled ? '暂停' : '开启订阅'}</button><button type="button" class="primary" data-sub-action="run" ${busy || running || data.archived ? 'disabled' : ''}>${running ? '正在运行…' : '立即运行'}</button><button type="button" data-sub-action="refresh" ${busy || running ? 'disabled' : ''}>重新制定搜索策略</button></div><p class="subscription-status">arXiv · OpenAlex · 每条订阅每日最多 5 篇，今日剩余 ${sub.remaining} 篇。首次查近 7 天，后续补检并回看 7 天以覆盖延迟收录；项目内去重。</p></div></section><section class="memory-card"><header class="memory-head"><span>AI 检索与筛选提示词</span></header><div class="memory-proposal-body"><p role="status">${sub.strategy.needs_refresh ? "研究要求已保存，策略待更新；下次检索前会重新制定。" : ""}</p><p>${esc(sub.strategy.query || '尚未生成检索词')}</p><div class="subscription-prompt">${esc(sub.strategy.prompt || sub.strategy.focus || '尚未生成')}</div><small>策略按创建时选中的论文与研究日报制定并固定；修改研究要求或排除方向时更新，单独修改时间不影响策略。</small></div></section>${runsHTML(sub)}`;
+  function searchHTML() {
+    const items = searchEntries(), gaps = search?.refs?.partial_gaps || [];
+    const failure = searchError || (search?.status === 'failed' ? search.error || '搜索失败，请重试。' : '');
+    const note = failure || (searching ? '正在检索，结果会陆续显示…' : search ? `${items.length} 篇结果` : '搜索外部论文，选择后加入文献库。');
+    const warning = gaps.length ? `<details class="discovery-source-warning" data-key="search-source-warning"><summary>${icon('alert')}<span>部分来源暂不可用</span><span class="discovery-warning-toggle"><span class="warning-show">查看原因</span><span class="warning-hide">收起原因</span>${icon('chevron')}</span></summary><div class="discovery-warning-detail">${gaps.map(gap => `<p>${esc(String(gap).replaceAll('semantic_scholar','Semantic Scholar').replaceAll('openalex','OpenAlex'))}</p>`).join('')}</div></details>` : '';
+    return `<div class="discovery-search-page"><form id="library-search" class="discovery-search"><label class="compact-search-field">${icon('search')}<span class="sr-only">搜索外部论文</span><input id="library-query" aria-label="搜索外部论文" name="query" type="search" minlength="2" maxlength="200" required placeholder="输入论文关键词" value="${esc(query)}"><button type="button" class="icon" data-sub-action="clear-search" aria-label="清空外部论文搜索">${icon('close')}</button></label><button type="submit" class="primary" ${searching ? 'disabled' : ''}>${searching ? '搜索中…' : '搜索'}</button></form><div class="discovery-search-summary"><p class="discovery-search-note${failure ? ' search-failed' : ''}" role="${failure ? 'alert' : 'status'}">${esc(note)}</p>${warning}</div><div class="discovery-search-results">${items.map(searchCard).join('')}</div>${search && !searching && !items.length && !failure ? '<div class="discovery-empty"><h3>没有找到可展示的新论文</h3><p>试试更明确的关键词，或调整检索范围。</p></div>' : ''}</div>`;
   }
   function paint() {
-    if (!current || projectId !== current.id) return;
-    if (shellView === 'subscriptions') shellPaint({titles:['论文订阅'],badges:[String(data?.subscriptions.length || 0)],bodies:[listHTML()]});
-    if (middleView === 'subscriptions' && !dirty && !document.activeElement?.closest('#subscription-settings')) paintMiddle('subscriptions',selectedSubscription()?.name || '订阅详情',detailHTML());
-    renderPending();
-    for (const nav of document.querySelectorAll('[data-action="shell"][data-value="library"]')) {
-      nav.querySelector('.subscription-count')?.remove();
-      if (pending().length) nav.insertAdjacentHTML('beforeend',`<span class="badge subscription-count" aria-label="${pending().length} 篇待确认">${pending().length}</span>`);
+    if (projectId !== current?.id) return;
+    const nav = document.querySelector('[data-action="shell"][data-value="library"]');
+    nav?.querySelector('.subscription-count')?.remove();
+    const count = entries().filter(i => pending(i.candidate)).length;
+    if (count) nav?.insertAdjacentHTML('beforeend',`<span class="badge subscription-count" aria-label="${count} 篇待确认">${count}</span>`);
+    if (shellView !== 'library' || middleView !== 'library') return;
+    const host = document.getElementById('chat-body');
+    panelHeading('chat-panel',searchMode ? '搜索论文' : '论文推荐');
+    const tools = document.getElementById('chat-tools'), toolsHTML = `<button type="button" class="quiet" data-sub-action="${searchMode ? 'back' : 'search'}">${icon(searchMode ? 'back' : 'search')}${searchMode ? '返回推荐' : '搜索论文'}</button><button type="button" class="quiet" data-sub-action="settings">订阅设置</button>`;
+    if (tools.innerHTML !== toolsHTML) tools.innerHTML = toolsHTML;
+    host.className = 'discovery-body';
+    const html = searchMode ? searchHTML() : recommendationsHTML();
+    if (host.dataset.html === html) return;
+    const top = host.scrollTop, opened = new Set([...host.querySelectorAll('details[open]')].map(d => d.dataset.key));
+    const active = document.activeElement, input = host.querySelector('#library-query');
+    const focusedQuery = active === input, typed = input?.value, focusedCard = active?.closest('[data-sub-candidate]');
+    const focus = focusedCard ? {wait:focusedCard.dataset.subWait,candidate:focusedCard.dataset.subCandidate,choice:active.dataset.subChoice,expand:active.hasAttribute('data-sub-expand'),undo:active.hasAttribute('data-sub-undo'),translate:active.hasAttribute('data-sub-translate')} : null;
+    host.innerHTML = html; host.dataset.html = html;
+    host.querySelectorAll('details').forEach(d => { if (opened.has(d.dataset.key)) d.open = true; });
+    if (input && searchMode && typed !== undefined) host.querySelector('#library-query').value = typed;
+    if (focusedQuery) host.querySelector('#library-query')?.focus({preventScroll:true});
+    if (focus) {
+      const row = [...host.querySelectorAll('[data-sub-candidate]')].find(n => n.dataset.subWait === focus.wait && n.dataset.subCandidate === focus.candidate);
+      const control = focus.translate ? row?.querySelector('[data-sub-translate]') : focus.expand ? row?.querySelector('[data-sub-expand]') : focus.undo ? row?.querySelector('[data-sub-undo]') : focus.choice ? row?.querySelector(`[data-sub-choice="${focus.choice}"]`) : null;
+      (control || row?.querySelector('[data-sub-undo], [data-sub-expand], summary'))?.focus({preventScroll:true});
     }
+    host.scrollTop = top;
   }
   async function load() {
-    if (!current?.id || loading) return;
+    if (!current?.id || loading || busy) return;
     const project = current.id;
-    if (projectId !== project) { data = null; selectedId = null; dirty = false; error = ''; projectId = project; }
+    if (projectId !== project) {
+      document.querySelector('.subscription-settings-dialog')?.close();
+      projectId = project; data = search = null; selectedId = null; searchMode = searching = false; query = error = searchError = ''; retained.clear(); previousChoices.clear(); drafts.clear(); expandedSearchResults.clear();
+    }
     loading = true;
     try {
       const next = await api(endpoint(project));
-      if (current?.id !== project) return;
-      const changed = JSON.stringify(next) !== JSON.stringify(data) || error;
+      if (current?.id !== project || busy) return;
       data = next; error = '';
       if (!data.subscriptions.some(s => s.id === selectedId)) selectedId = data.subscriptions[0]?.id || null;
-      if (changed) paint();
+      paint();
+      if (current.papers.some(p => p.availability?.fulltext === 'pending')) {
+        const latest = await api(`/api/projects/${encodeURIComponent(project)}`);
+        if (current?.id !== project || busy) return;
+        if (JSON.stringify(current.papers) !== JSON.stringify(latest.papers)) {
+          current = {...current,papers:latest.papers};
+          renderSources();
+        }
+      }
     } catch (e) { if (current?.id === project) { error = '订阅读取失败：' + e.message; paint(); } }
     finally { loading = false; }
   }
-  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-  let rowAnimations = [];
-  reducedMotion.addEventListener('change', () => {
-    if ((window.MethodAtlasSettings?.reducedMotion() || reducedMotion.matches)) rowAnimations.forEach(animation => animation.cancel());
-  });
-  const sourceRows = () => [...document.querySelectorAll('#source-body [data-source-id], #subscription-pending [data-sub-candidate]')];
-  const rowKey = node => node.dataset.sourceId ? `paper:${node.dataset.sourceId}` : `candidate:${node.dataset.subWait}:${node.dataset.subCandidate}`;
-  function animateCollectedRows(before) {
-    if (!before || (window.MethodAtlasSettings?.reducedMotion() || reducedMotion.matches)) return;
-    // Measure all rows before starting animations; polling never calls this path.
-    const rows = sourceRows().map(node => ({node, top:node.getBoundingClientRect().top, old:before.get(rowKey(node))}));
-    rowAnimations.forEach(animation => animation.cancel());
-    rowAnimations = rows.flatMap(({node, top, old}) => {
-      if (!node.checkVisibility() || top > innerHeight || top + node.offsetHeight < 0) return [];
-      const fresh = old === undefined && node.dataset.sourceId;
-      if (!fresh && (old === undefined || Math.abs(old - top) < 1)) return [];
-      return [node.animate(fresh
-        ? [{opacity:0,transform:'translateY(4px)'},{opacity:1,transform:'none'}]
-        : [{transform:`translateY(${old - top}px)`},{transform:'none'}], {duration:180,easing:'ease-out'})];
-    });
-  }
+  function activate() { load(); paint(); }
+  function leave() { retained.clear(); previousChoices.clear(); }
+  window.MethodAtlasSubscriptions = {activate,leave,open:async id => { switchShellView('library'); await load(); selectedId = id || data?.subscriptions[0]?.id; openSettings(); }};
 
-  async function mutate(action, body) {
-    if (busy) return;
-    const project = current.id, generation = viewGeneration;
-    let beforeRows = null;
-    busy = true; error = ''; paint();
-    try {
-      const result = await api(endpoint(project) + '/' + action,{method:'POST',body:JSON.stringify(body)});
-      if (current?.id !== project) return;
-      data = result; projectId = project; if (action === 'settings') dirty = false;
-      if (action === 'choose') {
-        const latest = await api(`/api/projects/${encodeURIComponent(project)}`);
-        if (current?.id !== project) return;
-        if (body.choice === 'collected' && shellView === 'library' && generation === viewGeneration) {
-          beforeRows = new Map(sourceRows().map(node => [rowKey(node),node.getBoundingClientRect().top]));
-        }
-        current = {...current,papers:latest.papers};
-        for (const id of selected) if (!current.papers.some(p => p.id === id)) selected.delete(id);
-        renderSources();
-      }
-    } catch (e) { if (current?.id === project) { error = e.message; toast(error); } }
-    finally { busy = false; if (current?.id === project) { if (!dirty) document.activeElement?.blur(); paint(); animateCollectedRows(beforeRows); const alert = document.getElementById('subscription-error'); if (alert) alert.textContent = error; } }
+  const stash = () => { const form = document.getElementById('subscription-settings'); if (form && !busy) drafts.set(form.dataset.id,Object.fromEntries(new FormData(form))); };
+  function formHTML(fresh = false) {
+    const sub = fresh ? null : selectedSubscription(), fields = drafts.get(sub?.id || '') || {requirements:[sub?.requirements,sub?.excluded && `排除：${sub.excluded}`].filter(Boolean).join('\n\n'),time:sub?.time || '08:00',name:sub?.name || '每日论文推荐'};
+    const running = data?.runs.some(r => r.subscription_id === sub?.id && r.status === 'running');
+    return `<div class="modal-head"><div class="row between"><h2 id="subscription-title">${sub ? '订阅设置' : '设置推荐方向'}</h2><div class="row">${sub ? `<button type="button" class="quiet" data-sub-action="chat">${icon('chat')}与 AI 讨论</button>` : ''}<button type="button" class="icon" data-sub-close aria-label="关闭订阅设置">${icon('close')}</button></div></div></div><div class="modal-body">${data?.subscriptions.length ? `<div class="subscription-picker"><label for="subscription-picker">订阅</label><select id="subscription-picker">${data.subscriptions.map(s => `<option value="${esc(s.id)}" ${s.id === sub?.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="" ${!sub ? 'selected' : ''}>新建订阅</option></select></div>` : ''}<form id="subscription-settings" data-id="${esc(sub?.id || '')}" class="subscription-form"><div class="row between"><label for="subscription-direction">研究方向</label><button type="button" class="quiet" data-sub-action="ai">${icon('spark')}AI 帮我设定</button></div><textarea id="subscription-direction" name="requirements" maxlength="4000" required placeholder="你想持续关注哪些研究问题？">${esc(fields.requirements)}</textarea><p class="subscription-basis">AI 仅参考本项目主题、文献题名与摘要、近期研究日报。</p><div id="direction-preview" hidden></div><div class="subscription-fields"><label>每天运行时间 <span>北京时间</span><input type="time" name="time" required value="${esc(fields.time)}"></label><label>名称<input name="name" maxlength="100" required value="${esc(fields.name)}"></label></div><p id="subscription-error" role="status" hidden></p><div class="subscription-footer">${sub ? `<div class="row"><button type="button" data-sub-action="toggle">${sub.enabled ? '暂停订阅' : '启动订阅'}</button><button type="button" class="quiet" data-sub-action="run" ${running ? 'disabled' : ''}>${running ? '运行中…' : '立即运行'}</button></div>` : '<span class="subscription-basis">启用后从下一个设定时间开始推荐。</span>'}<button type="submit" class="primary">${sub ? '保存更改' : '确认启用'}</button></div></form></div>`;
   }
-  function activate() { if (projectId !== current?.id) { data = null; projectId = current?.id; selectedId = null; dirty = false; } paint(); load(); }
-  window.MethodAtlasSubscriptions = {activate,open:async id => { await load(); selectedId = id || data?.subscriptions[0]?.id; dirty = false; openMiddle('subscriptions',selectedSubscription()?.name || '订阅详情',selectedId); paint(); }};
-  document.addEventListener('input',e => { if (e.target.closest('#subscription-settings')) dirty = true; });
-  document.addEventListener('toggle',e => {
-    const section = e.target;
-    if (section.id !== 'subscription-pending' || section.dataset.project !== projectId) return;
-    try { localStorage.setItem(stateKey('collapsed',projectId),section.open ? '0' : '1'); } catch {}
-  },true);
-  document.addEventListener('submit',e => {
-    if (e.target.id !== 'subscription-settings') return;
-    e.preventDefault();
-    mutate('settings',{subscription_id:e.target.dataset.id,...Object.fromEntries(new FormData(e.target))});
+  function openSettings() {
+    if (!data) { toast(error || '正在读取订阅，请稍后重试。'); load(); return; }
+    if (document.querySelector('.subscription-settings-dialog')) return;
+    const dialog = document.createElement('dialog'); dialog.className = 'subscription-settings-dialog';
+    dialog.setAttribute('aria-labelledby','subscription-title'); dialog.innerHTML = formHTML();
+    dialog.addEventListener('cancel',event => { if (busy) event.preventDefault(); else stash(); });
+    dialog.addEventListener('close',() => dialog.remove());
+    document.body.append(dialog); dialog.showModal();
+    if (data.archived) { dialog.querySelectorAll('form button,form input,form textarea').forEach(n => n.disabled = true); formError('项目已归档，无法修改订阅。'); }
+  }
+  function formError(message) { const node = document.getElementById('subscription-error'); if (node) { node.hidden = !message; node.textContent = message; } }
+  function lockForm(value) { document.querySelectorAll('.subscription-settings-dialog button,.subscription-settings-dialog input,.subscription-settings-dialog textarea,.subscription-settings-dialog select').forEach(n => { if (value) { n.dataset.disabled = String(n.disabled); n.disabled = true; } else n.disabled = n.dataset.disabled === 'true'; }); }
+  async function saveSettings() {
+    const form = document.getElementById('subscription-settings');
+    if (!form || !form.reportValidity() || busy) return false;
+    const project = current.id, ident = form.dataset.id, body = Object.fromEntries(new FormData(form));
+    busy = true; lockForm(true); formError('正在保存…');
+    try {
+      const result = await post(project,ident ? 'settings' : 'create',ident ? {...body,excluded:'',subscription_id:ident} : body);
+      if (project !== current?.id || !form.isConnected) return false;
+      data = result; selectedId = ident || result.subscriptions.at(-1)?.id;
+      form.dataset.id = selectedId; drafts.delete(ident);
+      const failure = result.runs.find(r => r.subscription_id === selectedId)?.error;
+      if (!ident && failure) { form.closest('dialog').innerHTML = formHTML(); formError(failure); return false; }
+      formError('已保存'); paint(); return true;
+    } catch (e) { formError(e.message); return false; }
+    finally { busy = false; lockForm(false); }
+  }
+  async function draftDirection() {
+    const form = document.getElementById('subscription-settings'); if (!form || busy) return;
+    const project = current.id, requirements = form.elements.requirements.value;
+    busy = true; lockForm(true); formError('正在根据项目资料拟定方向…');
+    try {
+      const result = await post(project,'draft',{requirements});
+      if (project !== current?.id || !form.isConnected) return;
+      const preview = document.getElementById('direction-preview'); preview.hidden = false;
+      preview.innerHTML = '<h3>建议方向</h3><p></p><div class="row"><button type="button" class="primary" data-sub-action="adopt">采用</button><button type="button" data-sub-action="cancel-draft">取消</button></div>';
+      preview.querySelector('p').textContent = result.requirements; formError('采用后仍可编辑，保存才会生效。');
+    } catch (e) { formError(e.message); }
+    finally { busy = false; lockForm(false); }
+  }
+  async function choose(node, choice, undo = false) {
+    if (busy) return;
+    const project = current.id, isSearch = searchMode;
+    const item = (isSearch ? searchEntries() : entries()).find(i => i.run.wait_id === node.dataset.subWait && i.candidate.id === node.dataset.subCandidate);
+    if (!item) return;
+    const key = keyOf(item), previous = item.candidate.choice;
+    if (undo) choice = previousChoices.get(key);
+    if (previous === 'collected' && choice === 'saved') choice = 'pending';
+    busy = true; paint();
+    try {
+      const result = await post(project,'choose',{wait_id:item.run.wait_id,candidate_id:item.candidate.id,choice});
+      if (current?.id !== project) return;
+      if (undo) previousChoices.delete(key); else previousChoices.set(key,previous);
+      retained.add(key); if (isSearch) search = result; else data = result;
+      const latest = await api(`/api/projects/${encodeURIComponent(project)}`);
+      if (current?.id !== project) return;
+      current = {...current,papers:latest.papers};
+      for (const id of selected) if (!current.papers.some(p => p.id === id)) selected.delete(id);
+      renderSources();
+    } catch (e) { toast(e.message); }
+    finally { busy = false; paint(); }
+  }
+  async function runSearch(form) {
+    if (searching || !form.reportValidity()) return;
+    const project = current.id;
+    query = form.elements.query.value.trim(); search = null; searchError = ''; searching = true; expandedSearchResults.clear(); paint();
+    try {
+      const result = await post(project,'search',{query});
+      if (current?.id !== project) return;
+      search = {id:result.id,status:'running',waits:[]}; await pollSearch();
+    } catch (e) { if (current?.id === project) { searchError = e.message; searching = false; paint(); } }
+  }
+  let pollingSearch = false;
+  async function pollSearch() {
+    if (!searching || !search?.id || pollingSearch || busy) return;
+    const project = projectId, ident = search.id; pollingSearch = true;
+    try {
+      const next = await api(endpoint(project) + '/search/' + encodeURIComponent(ident));
+      if (current?.id !== project || search?.id !== ident || busy) return;
+      search = next; searching = ['running','queued'].includes(next.status); searchError = ''; paint();
+    } catch (e) { if (current?.id === project) { searchError = '搜索状态读取失败：' + e.message; searching = false; paint(); } }
+    finally { pollingSearch = false; }
+  }
+  document.addEventListener('submit',async event => {
+    if (event.target.id === 'library-search') { event.preventDefault(); runSearch(event.target); }
+    if (event.target.id === 'subscription-settings') { event.preventDefault(); if (await saveSettings()) document.querySelector('.subscription-settings-dialog')?.close(); }
   });
-  document.addEventListener('click',e => {
-    const row = e.target.closest('[data-sub-row]');
-    if (row) { selectedId = row.dataset.subRow; dirty = false; openMiddle('subscriptions',selectedSubscription()?.name,selectedId); paint(); return; }
-    const candidate = e.target.closest('.subscription-candidate');
-    if (candidate) { const match = findCandidate(candidate.dataset.subWait, candidate.dataset.subCandidate); if (match) openCandidateDetail(match); return; }
-    const detailClose = e.target.closest('[data-sub-detail-close]');
-    if (detailClose) { detailClose.closest('dialog')?.close(); return; }
-    const choice = e.target.closest('[data-sub-choice]');
-    if (choice) { const card = choice.closest('[data-sub-wait]'); if (!card) return; card.closest('dialog')?.close(); mutate('choose',{wait_id:card.dataset.subWait,candidate_id:card.dataset.subCandidate,choice:choice.dataset.subChoice}); return; }
-    const action = e.target.closest('[data-sub-action]')?.dataset.subAction;
-    if (action === 'create') { switchShellView('chat'); openMiddle('chat'); const input = document.getElementById('chat-input'); if (input) { if (!input.value) input.value = '创建一个每日订阅，基于选中的论文和每日研究报告，跟踪我关注领域的最新论文，每天北京时间早上 8:00。'; input.dispatchEvent(new Event('input',{bubbles:true})); input.focus(); } return; }
-    if (!action || !selectedSubscription()) return;
-    if (dirty) return toast('请先保存订阅设置。');
-    const sub = selectedSubscription();
-    if (action === 'toggle') mutate(sub.enabled ? 'settings' : 'enable',{subscription_id:sub.id,...(sub.enabled ? {enabled:false} : {})});
-    else if (['run','refresh'].includes(action)) mutate(action,{subscription_id:sub.id});
+  document.addEventListener('change',event => {
+    if (event.target.id !== 'subscription-picker') return;
+    stash(); selectedId = event.target.value || null; event.target.closest('dialog').innerHTML = formHTML(!selectedId);
   });
-  document.addEventListener('keydown', e => {
-    const candidate = e.target.closest?.('.subscription-candidate');
-    if (!candidate || !['Enter',' '].includes(e.key)) return;
-    e.preventDefault();
-    const match = findCandidate(candidate.dataset.subWait, candidate.dataset.subCandidate);
-    if (match) openCandidateDetail(match);
+  document.addEventListener('click',async event => {
+    const translate = event.target.closest('[data-sub-translate]');
+    if (translate) {
+      const row = translate.closest('[data-sub-candidate]');
+      const item = searchEntries().find(i => i.run.wait_id === row.dataset.subWait && i.candidate.id === row.dataset.subCandidate);
+      const paper = item?.candidate.preferred;
+      if (paper?.summary?.trim()) openSelectionTranslate(paper.summary, paper.title || '论文摘要', translate.getBoundingClientRect());
+      return;
+    }
+    const disclosure = event.target.closest('[data-sub-expand]');
+    if (disclosure) {
+      const key = disclosure.dataset.subExpand, open = !expandedSearchResults.has(key);
+      if (open) expandedSearchResults.add(key); else expandedSearchResults.delete(key);
+      const detail = document.getElementById(disclosure.getAttribute('aria-controls'));
+      if (detail) detail.hidden = !open;
+      disclosure.setAttribute('aria-expanded',String(open));
+      disclosure.setAttribute('aria-label',`${open ? '收起' : '展开'}详情：${disclosure.closest('.search-result-row').querySelector('.recommendation-title').textContent}`);
+      disclosure.querySelector('span').textContent = open ? '收起' : '详情';
+      document.getElementById('chat-body').dataset.html = searchHTML();
+      return;
+    }
+    const choice = event.target.closest('[data-sub-choice],[data-sub-undo]');
+    if (choice) { choose(choice.closest('[data-sub-wait]'),choice.dataset.subChoice,choice.hasAttribute('data-sub-undo')); return; }
+    if (event.target.closest('[data-sub-close]')) { if (!busy) { stash(); event.target.closest('dialog')?.close(); } return; }
+    const action = event.target.closest('[data-sub-action]')?.dataset.subAction; if (!action) return;
+    if (action === 'retry') { load(); return; }
+    if (action === 'clear-search') {
+      query=''; const input=document.getElementById('library-query'); if(input) input.value='';
+      paint(); document.getElementById('library-query')?.focus({preventScroll:true});
+      return;
+    }
+    if (action === 'settings') { openSettings(); return; }
+    if (action === 'chat' && !busy) {
+      const sub=selectedSubscription();if(!sub)return;
+      stash();
+      const settings=Object.fromEntries(['id','name','requirements','excluded','time','enabled','next_run'].map(k=>[k,sub[k]]));
+      if(await window.MethodAtlasAI.open({id:uid(),kind:'subscription',subscription_id:sub.id,title:sub.name,text:JSON.stringify(settings,null,2)})){
+        document.querySelector('.subscription-settings-dialog')?.close();
+        document.getElementById('chat-input')?.focus({preventScroll:true});
+      }
+      return;
+    }
+    if (action === 'search' || action === 'back') {
+      const host = document.getElementById('chat-body');
+      if (action === 'search') recommendationScroll = host.scrollTop;
+      if (action === 'back') query = document.getElementById('library-query')?.value ?? query;
+      searchMode = action === 'search'; paint(); host.scrollTop = searchMode ? 0 : recommendationScroll;
+      if (searchMode) document.getElementById('library-query')?.focus(); return;
+    }
+    if (action === 'ai') { draftDirection(); return; }
+    if (action === 'adopt' || action === 'cancel-draft') {
+      const preview = document.getElementById('direction-preview');
+      if (action === 'adopt') document.getElementById('subscription-direction').value = preview.querySelector('p').textContent;
+      preview.hidden = true; preview.replaceChildren(); formError(''); document.getElementById('subscription-direction').focus(); return;
+    }
+    if (!['toggle','run'].includes(action) || busy) return;
+    const project = current.id, sub = selectedSubscription(); if (!sub) return;
+    const form = document.getElementById('subscription-settings');
+    const stored = {...sub,requirements:[sub.requirements,sub.excluded && `排除：${sub.excluded}`].filter(Boolean).join('\n\n')};
+    if (['requirements','name','time'].some(key => form.elements[key].value !== stored[key])) {
+      formError('请先保存更改，再操作订阅。当前输入已保留。'); return;
+    }
+    busy = true; lockForm(true); formError(action === 'run' ? '正在运行…' : '正在更新…');
+    try {
+      const result = await post(project,action === 'run' ? 'run' : sub.enabled ? 'settings' : 'enable',{subscription_id:sub.id,...(action === 'toggle' && sub.enabled ? {enabled:false} : {})});
+      if (current?.id !== project) return;
+      data = result; const dialog = document.querySelector('.subscription-settings-dialog'); if (dialog) dialog.innerHTML = formHTML();
+      const startsRun = action === 'run' || !sub.enabled;
+      const run = startsRun ? data.runs.find(r => r.id === data.operation_run_id && r.subscription_id === sub.id) : null;
+      if (startsRun && !run) throw Error('本次订阅未启动，请刷新状态后重试。');
+      formError(run?.status === 'failed' ? run.error : startsRun ? run.status === 'running' ? '正在运行…' : run.status === 'partial' ? '部分完成，可关闭设置查看推荐。' : '运行完成，可关闭设置查看推荐。' : '已更新'); paint();
+    } catch (e) { formError(e.message); }
+    finally { busy = false; lockForm(false); }
   });
-  setInterval(load,3000);
-  load();
+  setInterval(() => { load(); pollSearch(); },3000); load();
 })();

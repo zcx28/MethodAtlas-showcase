@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "build:writing": "esbuild prototype/writing.jsx --bundle --minify --format=iife --target=es2022 --outfile=prototype/dist/writing.js --define:process.env.NODE_ENV=\"\\\"production\\\"\"",
-    "check:writing": "node prototype/check-writing.mjs"
+    "check:writing": "node prototype/check-writing.mjs",
+    "check:ai-dialog": "node prototype/check-ai-dialog.cjs",
+    "check": "node prototype/check-reliability.cjs && npm run check:writing"
   },
   "engines": {
     "node": ">=22.18.0"
@@ -18,6 +20,12 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "esbuild": "0.25.12"
+    "esbuild": "0.25.12",
+    "playwright": "1.62.1"
+  },
+  "overrides": {
+    "pptxgenjs": {
+      "image-size": "2.0.4"
+    }
   }
 }

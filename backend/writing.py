@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pymupdf
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Inches
 from .state import json_text, new_id, now
 
@@ -108,6 +110,9 @@ def validate_document(store, project, nodes):
         if kind in ('citation', 'img', 'equation') and children != [{'text': ''}]:
             raise ValueError('引用、图片或公式结构无效')
         if kind == 'table':
+            if any(not isinstance(row, dict) or row.get('type') != 'tr' or not isinstance(row.get('children'), list) or not row['children']
+                   or any(not isinstance(cell, dict) or cell.get('type') != 'td' for cell in row['children']) for row in children):
+                raise ValueError('表格需要至少一行和一个单元格')
             lengths = [len(row.get('children', [])) for row in children if isinstance(row, dict)]
             if not lengths or max(lengths) > 12 or len(set(lengths)) != 1:
                 raise ValueError('表格需要相同列数（最多 12 列）')
@@ -269,7 +274,14 @@ def render_document(title, nodes, citations, images=None):
                     raw = source[0].get_pixmap().tobytes('png')
             images[name] = raw
             return f'<p><img src="{name}" width="{420 if kind == "img" else 260}"></p><p>{html.escape(label)}</p>'
-        return f'<{kind} id="{html.escape(node.get("id", ""), quote=True)}">' + ''.join(render(c) for c in node['children']) + f'</{kind}>'
+        content = ''.join(render(c) for c in node['children'])
+        ident = html.escape(node.get('id', ''), quote=True)
+        if kind == 'divider':
+            return f'<hr id="{ident}">'
+        if kind == 'task':
+            return f'<p id="{ident}">{"[x]" if node["checked"] else "[ ]"} {content}</p>'
+        tag = {'quote':'blockquote','code':'pre'}.get(kind,kind)
+        return f'<{tag} id="{ident}">{content}</{tag}>'
     refs = ''.join(f'<p id="ref-{i}">[{i}] {html.escape(c["title"])} · {html.escape(c["paper_version_id"])} · p.{c.get("page", 1)}</p>' for i, c in enumerate(citations, 1))
     return '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'"><title>' + html.escape(title) + '</title><style>body{font-family:sans-serif;line-height:1.6;margin:24px}img{max-width:100%;height:auto}table{border-collapse:collapse;width:100%}td{border:1px solid #777;padding:6px}pre{white-space:pre-wrap}a{color:#174d9c}</style></head><body><h1>' + html.escape(title) + '</h1>' + ''.join(render(n) for n in nodes) + ('<h2>参考文献</h2>' + refs if refs else '') + '</body></html>'
 
@@ -285,30 +297,104 @@ class Writing:
                     store.db.backup(backup)
                 store.db.execute("CREATE TABLE writing_proposals(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,artifact_id TEXT NOT NULL,base_version_id TEXT NOT NULL,task_id TEXT NOT NULL,request TEXT NOT NULL,before_nodes TEXT NOT NULL,after_nodes TEXT,status TEXT NOT NULL,result TEXT,error TEXT,created TEXT NOT NULL)")
                 store.db.commit()
+            if not store.one("SELECT 1 FROM sqlite_master WHERE name='writing_drafts'"):
+                directory = store.root / 'backups'
+                directory.mkdir(exist_ok=True)
+                with closing(sqlite3.connect(directory / ('before-writing-drafts-' + uuid.uuid4().hex + '.sqlite3'))) as backup:
+                    store.db.backup(backup)
+                with store.transaction() as db:
+                    db.execute('CREATE TABLE writing_drafts(artifact_id TEXT PRIMARY KEY,value TEXT NOT NULL)')
+                    db.execute('CREATE TABLE writing_snapshots(id TEXT PRIMARY KEY,artifact_id TEXT NOT NULL,value TEXT NOT NULL)')
 
     def version(self, project, artifact, version=None):
         item = self.store.artifact(project, artifact)
         found = next((v for v in item['versions'] if v['id'] == version), None) if item and version else item['versions'][-1] if item else None
+        if item:
+            row = self.store.one('SELECT value FROM writing_drafts WHERE artifact_id=?', (artifact,))
+            draft = json.loads(row['value']) if row else None
+            if draft and (not version or version == draft['id']):
+                found = draft
+            elif version and not found:
+                row = self.store.one('SELECT value FROM writing_snapshots WHERE id=? AND artifact_id=?', (version, artifact))
+                found = json.loads(row['value']) if row else None
         if not found or found['kind'] != 'manuscript' or 'document' not in found['payload']:
             raise ValueError('可编辑文档或版本不属于当前项目；旧成果保持只读')
         return found
 
-    def task(self, project, prompt, status='succeeded', conversation=None):
+    def save_draft(self, project, artifact, body, author='human', summary='自动保存草稿', user=None):
+        request = text(body.get('request_id'), 100)
+        title = text(body.get('title'), 300).strip()
+        if not request or not title:
+            raise ValueError('请求标识和文档标题不能为空')
+        with self.store.transaction() as db:
+            if user:
+                self.store.collaboration.artifact(user, project, artifact, write=True)
+            current = self.version(project, artifact)
+            fingerprint = hashlib.sha256(json_text(body).encode()).hexdigest()
+            if current.get('request_id') == request and current.get('payload', {}).get('edited_by') == (user['id'] if user else None):
+                if current['fingerprint'] != fingerprint:
+                    raise ValueError('请求标识已用于其他内容')
+                return {'version_id': current['id'], 'version_no': current['version_no'], 'artifact_id': artifact}
+            if current['id'] != body.get('base_version_id'):
+                raise ValueError('文档已有新版；未保存内容已保留，请回读并合并')
+            nodes = body.get('document')
+            citations = validate_document(self.store, project, nodes)
+            if user:
+                self.store.collaboration.document_evidence(user, project, citations, artifact=artifact)
+            if title == current['title'] and nodes == current['payload']['document']:
+                return {'version_id': current['id'], 'version_no': current['version_no'], 'artifact_id': artifact}
+            draft = {'id': new_id('draft'), 'artifact_id': artifact, 'task_id': current['task_id'], 'version_no': current['version_no'], 'title': title,
+                     'kind': 'manuscript', 'created': now(), 'citations': citations, 'request_id': request, 'fingerprint': fingerprint,
+                     'body': render_document(title, nodes, citations),
+                     'materials': list({c['paper_version_id']: {k: c[k] for k in ('paper_id', 'paper_version_id', 'title')} for c in citations}.values()),
+                     'payload': {'document': nodes, 'author': author, 'summary': summary, 'edited_by': user['id'] if user else None}}
+            db.execute('INSERT OR REPLACE INTO writing_drafts VALUES(?,?)', (artifact, json_text(draft)))
+            db.execute('UPDATE artifacts SET title=?,updated=? WHERE id=?', (title, now(), artifact))
+            return {'version_id': draft['id'], 'version_no': draft['version_no'], 'artifact_id': artifact}
+
+    def snapshot(self, project, artifact, body, user=None):
+        # Retain only explicitly used draft sources, never every autosave revision.
+        with self.store.transaction() as db:
+            if user:
+                self.store.collaboration.artifact(user, project, artifact, write=True)
+            version = self.version(project, artifact, body.get('version_id'))
+            if version['id'].startswith('draft_'):
+                db.execute('INSERT OR IGNORE INTO writing_snapshots VALUES(?,?,?)', (version['id'], artifact, json_text(version)))
+            return {'version_id': version['id']}
+
+    def archive(self, project, artifact, body, user=None):
+        with self.store.transaction():
+            current = self.version(project, artifact)
+            return self.save(project, artifact, {**body, 'title': current['title'], 'document': current['payload']['document']},
+                             summary=text(body.get('name', ''), 300).strip() or now(), user=user)
+
+    def task(self, project, prompt, status='succeeded', conversation=None, user=None, artifact=None):
+        with self.store.transaction():
+            return self._task(project, prompt, status, conversation, user, artifact)
+
+    def _task(self, project, prompt, status, conversation, user, artifact):
         if not self.store.project(project):
             raise ValueError('项目不存在')
         if conversation and not self.store.one('SELECT 1 FROM conversations WHERE id=? AND project_id=?', (conversation, project)):
             raise ValueError('对话不属于项目')
         supplied_conversation = conversation
+        if user:
+            conversation = self.store.collaboration.work_context(user, project, conversation, artifact)
         conversation = conversation or self.store.conversations(project)[0]['id']
         task = new_id('task')
         self.store.run("INSERT INTO tasks(id,project_id,conversation_id,message_id,prompt,selected_paper_ids,generate,status,created,updated,kind) VALUES(?,?,?,?,?,'[]',0,?,?,?,'writing')", (task, project, conversation, new_id('writing'), prompt, status, now(), now()))
         if status == 'running' and hasattr(self.store,'model_settings'):
             settings = self.store.model_settings
             options = settings.preferences(conversation) if supplied_conversation else {'connection_id':None,'effort':'auto','style':'balanced','language':settings.data.get('language','auto')}
-            self.store.run('UPDATE tasks SET refs=? WHERE id=?',(json_text({'model_config':settings.snapshot(options)}),task))
+            self.store.run('UPDATE tasks SET refs=? WHERE id=?',(json_text({'model_config':settings.snapshot(options, project=project)}),task))
+        if user:
+            refs = {**self.store.task(task)['refs'], 'initiated_by': user['id']}
+            if artifact:
+                refs['context_artifact_id'] = artifact
+            self.store.run('UPDATE tasks SET refs=? WHERE id=?', (json_text(refs), task))
         return self.store.task(task)
 
-    def reference(self, project, artifact, body):
+    def reference(self, project, artifact, body, user=None):
         """Register a bibliographic reference, not a claim-level supporting quote."""
         self.version(project, artifact)
         paper_id = text(body.get('paper_id'), 100)
@@ -316,38 +402,165 @@ class Writing:
         paper = self.store.paper(project, paper_id, version_id)
         if not paper or paper['status'] == 'removed':
             raise ValueError('文献版本不属于当前项目或已移除')
-        citation_id = 'cite_' + hashlib.sha256(('bibliography:' + project + ':' + version_id).encode()).hexdigest()[:32]
-        conversation = self.store.conversations(project)[0]['id']
         location = {'kind':'bibliography', 'page':1, 'quote':''}
         with self.store.transaction() as db:
+            conversation = self.store.collaboration.work_context(user, project, artifact=artifact) if user else self.store.conversations(project)[0]['id']
+            citation_id = 'cite_' + hashlib.sha256(('bibliography:' + project + ':' + version_id + (':' + conversation if user else '')).encode()).hexdigest()[:32]
             db.execute('INSERT OR IGNORE INTO evidence VALUES(?,?,?,?,?,?)', (citation_id, project, conversation, paper_id, version_id, json_text(location)))
         return self.store.citation(project, citation_id)
 
-    def save(self, project, artifact, body, author='human', summary='人工编辑', task=None):
+    def shared_citations(self, project, conversation, ids, user):
+        """Called inside publication's transaction; reuse exact shared evidence."""
+        result = {}
+        for cid in dict.fromkeys(ids):
+            citation = self.store.citation(project, cid)
+            self.store.collaboration.conversation(user, project, citation['conversation_id'])
+            row = self.store.one('SELECT * FROM evidence WHERE id=?', (citation['id'],))
+            self.store.run('INSERT OR IGNORE INTO evidence VALUES(?,?,?,?,?,?)', (new_id('cite'), project, conversation, row['paper_id'], row['paper_version_id'], row['location']))
+            shared = self.store.one('SELECT id FROM evidence WHERE conversation_id=? AND paper_version_id=? AND location=?', (conversation, row['paper_version_id'], row['location']))
+            result[cid] = shared['id']
+        return result
+
+    def publish_document(self, project, artifact, body, user):
+        if not user:
+            raise PermissionError('发布需要登录账号')
+        request = text(body.get('request_id'), 100)
+        version_id = text(body.get('version_id'), 100)
+        title = text(body.get('title'), 300).strip()
+        if not request or not version_id or not title:
+            raise ValueError('请确认标题及要发布的文稿版本')
+        key = 'publish-document:' + project + ':' + user['id']
+        fingerprint = hashlib.sha256(json.dumps({'artifact': artifact, 'body': body}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        access, path = self.store.collaboration, None
+        try:
+            with self.store.transaction() as db:
+                access.artifact(user, project, artifact, write=True)
+                if access.scope('artifact', artifact)['visibility'] != 'private':
+                    raise ValueError('该文稿已经共享')
+                old = db.execute('SELECT result FROM file_commits WHERE task_id=? AND call_id=?', (key, request)).fetchone()
+                if old:
+                    receipt = json.loads(old['result'])
+                    if receipt['fingerprint'] != fingerprint:
+                        raise ValueError('请求标识已用于其他发布')
+                    return receipt['value']
+                source = self.version(project, artifact, version_id)
+                source_task = self.store.task(source['task_id'])
+                if not source_task or source_task['status'] != 'succeeded':
+                    raise ValueError('原始成果尚未完成，不能发布')
+                access.conversation(user, project, source_task['conversation_id'])
+                conversation = access.work_context(user, project)
+                document = copy.deepcopy(source['payload']['document'])
+                validate_document(self.store, project, document)
+                mapping = self.shared_citations(project, conversation, [n['citation_id'] for n in walk(document) if n.get('type') == 'citation'], user)
+                for node in walk(document):
+                    if node.get('type') == 'citation':
+                        node['citation_id'] = mapping[node['citation_id']]
+                value = self.save(project, None, {'request_id': new_id('publication'), 'conversation_id': conversation, 'title': title,
+                    'document': document}, summary='成员发布文稿', user=user)
+                path = self.store.root / 'workspaces' / project / (value['version_id'] + '.html')
+                db.execute('INSERT INTO file_commits VALUES(?,?,?)', (key, request, json_text({'fingerprint': fingerprint, 'source': source, 'value': value})))
+                access.event(project, user['id'], 'artifact_published', value['artifact_id'], {'artifact_id': value['artifact_id'], 'version_id': value['version_id']})
+            return value
+        except BaseException:
+            if path:
+                path.unlink(missing_ok=True)
+            raise
+
+    def publish_message(self, project, body, user):
+        """Copy only the confirmed answer and its cited evidence into shared writing."""
+        if not user:
+            raise PermissionError('发布需要登录账号')
+        request = text(body.get('request_id'), 100)
+        message_id = text(body.get('message_id'), 100)
+        title = text(body.get('title'), 300).strip()
+        expected = text(body.get('sha256'), 64)
+        if not request or not title or not re.fullmatch(r'[a-f0-9]{64}', expected):
+            raise ValueError('请确认标题及要发布的回答')
+        key = 'publish:' + project + ':' + user['id']
+        fingerprint = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        access, path = self.store.collaboration, None
+        try:
+            with self.store.transaction() as db:
+                access.project(user, project, write=True)
+                source = db.execute('SELECT * FROM messages WHERE id=?', (message_id,)).fetchone()
+                if not source:
+                    raise PermissionError('回答不可访问')
+                access.conversation(user, project, source['conversation_id'])
+                if access.scope('conversation', source['conversation_id'])['visibility'] != 'private':
+                    raise ValueError('该回答已经属于共享对话')
+                if source['role'] != 'assistant':
+                    raise ValueError('请选择已完成的回答')
+                old = db.execute('SELECT result FROM file_commits WHERE task_id=? AND call_id=?', (key, request)).fetchone()
+                if old:
+                    receipt = json.loads(old['result'])
+                    if receipt['fingerprint'] != fingerprint:
+                        raise ValueError('请求标识已用于其他发布')
+                    return receipt['value']
+                task = self.store.task(source['task_id']) if source['task_id'] else None
+                if not task or task['status'] != 'succeeded' or task['conversation_id'] != source['conversation_id']:
+                    raise ValueError('回答尚未完成，请稍后发布')
+                raw = text(source['text'], 100000)
+                if not raw.strip() or hashlib.sha256(raw.encode()).hexdigest() != expected:
+                    raise ValueError('回答已变化，请重新打开发布预览')
+                conversation = access.work_context(user, project)
+                children, offset = [], 0
+                citations = self.shared_citations(project, conversation, re.findall(r'\[cite:([^\]]+)\]', raw), user)
+                for match in re.finditer(r'\[cite:([^\]]+)\]', raw):
+                    children.extend([{'text': raw[offset:match.start()]}, {'type': 'citation', 'citation_id': citations[match[1]], 'children': [{'text': ''}]}])
+                    offset = match.end()
+                children.append({'text': raw[offset:]})
+                value = self.save(project, None, {'request_id': new_id('publication'), 'conversation_id': conversation, 'title': title,
+                    'document': [{'id': new_id('block'), 'type': 'p', 'children': children}]}, summary='成员发布回答', user=user)
+                path = self.store.root / 'workspaces' / project / (value['version_id'] + '.html')
+                # The private source/snapshot stays in the receipt, never in shared payloads/events.
+                db.execute('INSERT INTO file_commits VALUES(?,?,?)', (key, request, json_text({'fingerprint': fingerprint, 'source': dict(source), 'value': value})))
+                access.event(project, user['id'], 'artifact_published', value['artifact_id'], {'artifact_id': value['artifact_id'], 'version_id': value['version_id']})
+            return value
+        except BaseException:
+            if path:
+                path.unlink(missing_ok=True)
+            raise
+
+    def save(self, project, artifact, body, author='human', summary='人工编辑', task=None, user=None):
         request = text(body.get('request_id'), 100)
         if not request or not self.store.project(project):
             raise ValueError('请求标识或项目无效')
         fingerprint = hashlib.sha256(json_text({'artifact': artifact, 'body': body}).encode()).hexdigest()
         key = 'writing:' + project
+        if user:
+            key += ':' + user['id']
         with self.store.transaction() as db:
+            if user:
+                self.store.collaboration.project(user, project, write=True)
+                if artifact:
+                    self.store.collaboration.artifact(user, project, artifact)
             old = db.execute('SELECT result FROM file_commits WHERE task_id=? AND call_id=?', (key, request)).fetchone()
             if old:
                 result = json.loads(old['result'])
                 if result['fingerprint'] != fingerprint:
                     raise ValueError('请求标识已用于其他内容')
                 return result['value']
-            baseline = self.version(project, artifact) if artifact else None
-            if baseline and baseline['id'] != body.get('base_version_id'):
+            current = self.version(project, artifact) if artifact else None
+            baseline = self.store.artifact(project, artifact)['versions'][-1] if artifact else None
+            if current and current['id'] != body.get('base_version_id'):
                 raise ValueError('文档已有新版；未保存内容已保留，请回读并合并')
             title = text(body.get('title'), 300).strip()
             if not title:
                 raise ValueError('文档标题不能为空')
             nodes = body.get('document')
             citations = validate_document(self.store, project, nodes)
+            if user:
+                self.store.collaboration.document_evidence(user, project, citations, artifact=artifact, conversation=body.get('conversation_id'))
+            if baseline and title == baseline['title'] and nodes == baseline['payload']['document']:
+                value = {'artifact_id': artifact, 'version_id': baseline['id'], 'version_no': baseline['version_no'], 'unchanged': True}
+                db.execute('DELETE FROM writing_drafts WHERE artifact_id=?', (artifact,))
+                db.execute('UPDATE artifacts SET title=? WHERE id=?', (title, artifact))
+                db.execute('INSERT INTO file_commits VALUES(?,?,?)', (key, request, json_text({'fingerprint': fingerprint, 'value': value})))
+                return value
             content = render_document(title, nodes, citations)
             ident, vid = artifact or new_id('artifact'), new_id('artifact_version')
             number = baseline['version_no'] + 1 if baseline else 1
-            task = task or self.task(project, summary)
+            task = task or self.task(project, summary, conversation=body.get('conversation_id'), user=user, artifact=artifact)
             folder = self.store.root / 'workspaces' / project
             folder.mkdir(parents=True, exist_ok=True)
             path = folder / (vid + '.html')
@@ -359,10 +572,11 @@ class Writing:
                     os.fsync(output.fileno())
                 if not artifact:
                     db.execute('INSERT INTO artifacts VALUES(?,?,?,?,?,?)', (ident, project, title, 'manuscript', now(), now()))
-                payload = {'document': nodes, 'filename': path.name, 'sha256': hashlib.sha256(raw).hexdigest(), 'base_version_id': body.get('base_version_id'), 'author': author, 'summary': summary}
+                payload = {'document': nodes, 'filename': path.name, 'sha256': hashlib.sha256(raw).hexdigest(), 'base_version_id': body.get('base_version_id'), 'author': author, 'summary': summary, 'edited_by': user['id'] if user else None}
                 materials = list({c['paper_version_id']: {k: c[k] for k in ('paper_id', 'paper_version_id', 'title')} for c in citations}.values())
                 db.execute('INSERT INTO artifact_versions(id,artifact_id,task_id,version_no,title,body,citations,materials,created,kind,payload) VALUES(?,?,?,?,?,?,?,?,?,?,?)', (vid, ident, task['id'], number, title, content, json_text(citations), json_text(materials), now(), 'manuscript', json_text(payload)))
                 db.execute('UPDATE artifacts SET title=?,updated=? WHERE id=?', (title, now(), ident))
+                db.execute('DELETE FROM writing_drafts WHERE artifact_id=?', (ident,))
                 value = {'artifact_id': ident, 'version_id': vid, 'version_no': number}
                 db.execute('INSERT INTO file_commits VALUES(?,?,?)', (key, request, json_text({'fingerprint': fingerprint, 'value': value})))
             except BaseException:
@@ -384,13 +598,17 @@ class Writing:
             proposal['explanation'] = task['refs'].get('failure_reply')
             proposal['usage'] = task['refs'].get('usage', [])
             proposals.append(proposal)
-        return {**item, 'proposals': proposals}
+        row = self.store.one('SELECT value FROM writing_drafts WHERE artifact_id=?', (artifact,))
+        return {**item, 'draft': json.loads(row['value']) if row else None, 'proposals': proposals}
 
-    def restore(self, project, artifact, body):
+    def restore(self, project, artifact, body, user=None):
         old = self.version(project, artifact, body.get('version_id'))
-        return self.save(project, artifact, {'request_id': body.get('request_id'), 'base_version_id': body.get('base_version_id'), 'title': old['title'], 'document': old['payload']['document']}, summary='恢复 v' + str(old['version_no']))
+        return self.save_draft(project, artifact, {'request_id': body.get('request_id'), 'base_version_id': body.get('base_version_id'), 'title': old['title'], 'document': old['payload']['document']}, summary='恢复 v' + str(old['version_no']), user=user)
 
-    def propose(self, project, artifact, body):
+    def propose(self, project, artifact, body, user=None):
+        if user:
+            with self.store.transaction():
+                self.store.collaboration.work_context(user, project, body.get('conversation_id'), artifact)
         request_id = text(body.get('request_id'), 100)
         instruction = text(body.get('instruction'), 10000).strip()
         if body.get('chat_options') is not None and body.get('conversation_id'):
@@ -408,6 +626,8 @@ class Writing:
                     raise ValueError('请求标识已用于其他修改')
                 return self.get(project, artifact)
             baseline = self.version(project, artifact)
+            if user:
+                self.store.collaboration.document_evidence(user, project, baseline['citations'], artifact=artifact)
             if baseline['id'] != body.get('base_version_id'):
                 raise ValueError('文稿已改变，请先保存并基于新版处理')
             nodes = baseline['payload']['document']
@@ -416,7 +636,7 @@ class Writing:
             before = nodes
             if body.get('mode') == 'edit' and not parts:
                 raise ValueError('局部编辑需要有效选区')
-            task = self.task(project, instruction, 'running', body.get('conversation_id'))
+            task = self.task(project, instruction, 'running', body.get('conversation_id'), user=user, artifact=artifact)
             papers = self.store.papers(project)
             selected = body.get('selected_paper_ids', [])
             if not isinstance(selected, list) or any(not isinstance(p, str) for p in selected) or not set(selected) <= {p['id'] for p in papers} or type(body.get('only_selected', False)) is not bool:
@@ -496,12 +716,16 @@ class Writing:
             with self.store.transaction() as db:
                 db.execute("UPDATE writing_proposals SET status='failed',error=? WHERE id=?", (message, request_id))
                 db.execute("UPDATE tasks SET status='failed',error=?,updated=? WHERE id=? AND status='running'", (message, now(), task['id']))
+        if user:
+            self.store.collaboration.artifact(user, project, artifact)
         return self.get(project, artifact)
 
-    def decide(self, project, artifact, proposal_id, action):
+    def decide(self, project, artifact, proposal_id, action, user=None):
         if action not in ('accept', 'reject'):
             raise ValueError('请选择整体接受或撤销')
         with self.store.transaction() as db:
+            if user:
+                self.store.collaboration.artifact(user, project, artifact, write=True)
             row = db.execute('SELECT * FROM writing_proposals WHERE id=? AND project_id=? AND artifact_id=?', (proposal_id, project, artifact)).fetchone()
             if not row:
                 raise ValueError('提案不属于文档和项目')
@@ -530,7 +754,7 @@ class Writing:
                     if low < 0 or low != high:
                         raise ValueError('新增位置已有人工修改，请基于新正文重新处理')
                 nodes[low:high] = patch['after']
-            result = self.save(project, artifact, {'request_id': 'accept:' + proposal_id, 'base_version_id': latest['id'], 'title': latest['title'], 'document': nodes}, author='AI · 用户已确认', summary=json.loads(row['result'])['summary'], task=self.store.task(row['task_id']))
+            result = self.save_draft(project, artifact, {'request_id': 'accept:' + proposal_id, 'base_version_id': latest['id'], 'title': latest['title'], 'document': nodes}, author='AI · 用户已确认', summary=json.loads(row['result'])['summary'], user=user)
             db.execute("UPDATE writing_proposals SET status='accepted',result=? WHERE id=?", (json_text({**json.loads(row['result']), **result}), proposal_id))
         return self.get(project, artifact)
 
@@ -543,10 +767,13 @@ class Writing:
         nodes, citations = selected['payload']['document'], selected['citations']
         validate_document(self.store, project, nodes)
         if kind == 'html':
-            path = self.store.root / 'workspaces' / project / selected['payload']['filename']
-            raw = path.read_bytes()
-            if hashlib.sha256(raw).hexdigest() != selected['payload']['sha256']:
-                raise ValueError('文件校验失败；旧版内容保留')
+            if selected['id'].startswith('draft_'):
+                raw = render_document(selected['title'], nodes, citations).encode()
+            else:
+                path = self.store.root / 'workspaces' / project / selected['payload']['filename']
+                raw = path.read_bytes()
+                if hashlib.sha256(raw).hexdigest() != selected['payload']['sha256']:
+                    raise ValueError('文件校验失败；旧版内容保留')
         elif kind == 'pdf':
             images = {}
             markup = render_document(selected['title'], nodes, citations, images)
@@ -573,24 +800,36 @@ class Writing:
                         for mark in ('bold', 'italic', 'underline'):
                             setattr(run, mark, child.get(mark, False))
             for node in nodes:
-                kind = node['type']
-                if kind == 'table':
+                node_kind = node['type']
+                if node_kind == 'table':
                     table = document.add_table(rows=len(node['children']), cols=len(node['children'][0]['children']))
                     table.style = 'Table Grid'
                     for cells, source in zip(table.rows, node['children']):
                         for cell, content in zip(cells.cells, source['children']):
                             for index, paragraph in enumerate(content['children']):
                                 runs(cell.paragraphs[0] if index == 0 else cell.add_paragraph(), paragraph['children'])
-                elif kind in ('ul', 'ol'):
+                elif node_kind in ('ul', 'ol'):
                     for child in node['children']:
-                        runs(document.add_paragraph(style='List Bullet' if kind == 'ul' else 'List Number'), child['children'])
-                elif kind in ('img', 'equation'):
-                    image = image_bytes(node['url']) if kind == 'img' else formula_png(node['formula'])
-                    document.add_picture(io.BytesIO(image), width=Inches(5 if kind == 'img' else 3))
+                        runs(document.add_paragraph(style='List Bullet' if node_kind == 'ul' else 'List Number'), child['children'])
+                elif node_kind in ('img', 'equation'):
+                    image = image_bytes(node['url']) if node_kind == 'img' else formula_png(node['formula'])
+                    document.add_picture(io.BytesIO(image), width=Inches(5 if node_kind == 'img' else 3))
                     document.add_paragraph(node.get('alt', node.get('formula', '')))
+                elif node_kind == 'divider':
+                    paragraph = document.add_paragraph()
+                    borders, border = OxmlElement('w:pBdr'), OxmlElement('w:bottom')
+                    for key, value in [('val','single'),('sz','4'),('color','999999')]:
+                        border.set(qn('w:'+key),value)
+                    borders.append(border)
+                    paragraph._p.get_or_add_pPr().append(borders)
                 else:
-                    paragraph = document.add_heading('', int(kind[1])) if kind.startswith('h') else document.add_paragraph()
+                    paragraph = document.add_heading('', int(node_kind[1])) if node_kind.startswith('h') else document.add_paragraph(style={'quote':'Quote','code':'No Spacing'}.get(node_kind))
+                    if node_kind == 'task':
+                        paragraph.add_run('[x] ' if node['checked'] else '[ ] ')
                     runs(paragraph, node['children'])
+                    if node_kind == 'code':
+                        for run in paragraph.runs:
+                            run.font.name = 'Consolas'
             if citations:
                 document.add_heading('参考文献', 1)
                 for i, c in enumerate(citations, 1):

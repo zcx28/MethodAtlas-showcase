@@ -64,7 +64,7 @@ class OpenNotebook:
         headers = {'Content-Type': 'application/json'}
         if os.getenv('OPEN_NOTEBOOK_PASSWORD'):
             headers['Authorization'] = 'Bearer ' + os.environ['OPEN_NOTEBOOK_PASSWORD']
-        # Design limit: top 20 chunks; refine the query or read pages for omitted context.
+        # top 20 chunks; refine the query or read pages for omitted context.
         payload = {'query': query, 'type': 'vector', 'limit': 20, 'minimum_score': 0.2,
                    'search_sources': True, 'search_notes': False, 'notebook_id': entry['notebook_id']}
         request = Request(self.base + '/api/search', json.dumps(payload).encode(), headers)

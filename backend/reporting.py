@@ -3,7 +3,7 @@
 Calls Mimir's pinned metricFigureSvg and renderDeck modules through a JSON
 bridge; originals and attribution live in third_party/mimir. No model code runs.
 """
-from .errors import failure_message, user_message
+from .errors import AppError, failure_message, user_message
 import csv
 import hashlib
 import io
@@ -22,6 +22,7 @@ REPORT_GUIDANCE = """
 先规划主张、真实数据来源及版本、坐标/单位和形式，再交文件。无数据仅交规划；如用户要求示意，可用 HTML 并在标题和图注明确“示意图，非实验结果”。不合成实验值。
 PNG 图表调用 write_file(kind="png")，content 是 JSON：{paper_id,version_id,x,ys,style,claim}。输入必须是项目内已保存的纯CSV粘贴材料，工具直接读取真实行，禁止传values。x为横轴列名，ys为数据列名数组，style为bar/line/scatter，claim为图表目的（不是已验证的结论）。列标题保留原单位；不同单位分图。不额外百分比换算、插值或排序。缺数据请说明并请用户通过“添加来源”粘贴CSV（带列标题及单位）。
 PPTX 调用 write_file(kind="pptx")，content 是 JSON：{slides:[{title,text,figure?,chart?,sources?}]}。每页文本重要结论用[cite:E1]，对应本轮citation_ids。标题简短，图页正文建议120个汉字以内；放不下会拒绝，请精简或明确拆页，不自动缩字或增加页数。figure={paper_id,version_id,page,rect?}，rect为显示页坐标，可省略以展示整页；不猜裁剪框或声称整页是已识别的Figure。工具只提取原页，不理解图意，图注须有文本或用户依据。chart={artifact_id,version_id}使用实际保存的PNG数据图，在PPT中是可编辑图表。每页至多一个figure或chart。sources=[{artifact_id,version_id}]固定所使用的项目成果版本。
+文献与成果是两类不同对象，不得混填 ID：CSV/论文的 paper_id、paper_version_id 不能放进 sources；文献依据使用正文 [cite:引用id] 并列入 citation_ids。复用 PNG 前先 read_file，chart 填该返回的 artifact_id 和 id（成果版本），例如 {"chart":{"artifact_id":"read_file返回的artifact_id","version_id":"read_file返回的id"}}，不得把 PNG 当 figure.paper_id；figure 仅用于真实 PDF 文献页。sources 也只接受已读取成果的 artifact_id/id，可省略；正文不必显示内部 ID。
 已有材料即可独立做PPT，不等待新图表或日报。进展和笔记可来自粘贴材料。跨对话选材用list_files(project_wide=true)、read_file(project_wide=true)；读到旧成果中的引用不代表本轮已核对，重要事实应回查材料。sources只记录真正使用过的成果；不因打开/选择就生成文件。PPTX可只用文字；缺图片/缺结果写明，保留已有内容。warnings为真实资源缺口，交付时说明并允许补齐后追加新版；不能把资源缺失说成成功提图。
 文件保存仍用write_file，修订先read_file读基线。图表数据/参数/来源版本可下载；PPT每页备注保留来源及版本。只使用返回的文件链接，不自行拼出未生成文件。
 """
@@ -29,7 +30,10 @@ PPTX 调用 write_file(kind="pptx")，content 是 JSON：{slides:[{title,text,fi
 
 def report_file(tools, ref):
     object_fields(ref, ('artifact_id', 'version_id'))
-    item = tools.store.artifact(tools.project, text(ref['artifact_id'], 100))
+    artifact_id, version_id = text(ref['artifact_id'], 100), text(ref['version_id'], 100)
+    if artifact_id.startswith('paper_') or version_id.startswith('paper_'):
+        raise AppError('input', '汇报来源需要成果版本，不能填写文献或文献版本')
+    item = tools.store.artifact(tools.project, artifact_id)
     version = next((v for v in item['versions'] if v['id'] == ref['version_id']), None) if item else None
     if not version:
         raise ValueError('汇报成果版本不属于当前项目')
@@ -88,6 +92,8 @@ def render_report(tools, kind, title, content, citations):
             raise ValueError('每页只放一张论文图片或数据图；请拆页')
         if 'figure' in source:
             ref = object_fields(source['figure'], ('paper_id', 'version_id', 'page'), ('rect',))
+            if text(ref['paper_id'], 100).startswith('artifact_') or text(ref['version_id'], 100).startswith('artifact_'):
+                raise AppError('input', '论文图片需要文献版本，已有数据图请使用图表来源')
             paper = material(ref)  # Authorization failures must not become optional-resource warnings.
             if paper['path'].startswith('paste:'):
                 raise ValueError('论文图片须来自 PDF 材料')

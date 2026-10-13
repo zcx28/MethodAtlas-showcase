@@ -1,6 +1,6 @@
 """Public failure contract: safe UI, private diagnostics, durable recovery."""
 import json
-import tempfile
+import os
 import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -10,14 +10,43 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 from .app import Handler, Service
-from .errors import AppError, record_error
+from .errors import AppError, record_error, public_payload, public_error, task_presentation
 from .agent import ProjectTools
+from .check_support import temporary_directory
 
 
 def main():
-    with tempfile.TemporaryDirectory() as directory, patch.object(Service, 'schedule'):
+    result = task_presentation({'status':'succeeded','refs':{},'events':[
+        {'status':'tool_start','message':'正在阅读 · 05_Octo_Open-Source_Generalist_Robot_Policy'},
+        {'status':'tool_done','message':'已阅读 · 05_Octo_Open-Source_Generalist_Robot_Policy · 第 3、7 页'}]})
+    assert [e['message'] for e in result['events']] == ['正在阅读', '已阅读 · 第 3、7 页']
+    assert result['outcome'] == 'succeeded'
+    for error in (HTTPError('https://export.arxiv.org/api/query',406,'Not Acceptable',{},None), RuntimeError('HTTP Error 406: Not Acceptable'), RuntimeError('模型服务暂时不可用。 请稍后重新发送请求。')):
+        public = public_error(error)
+        assert public['code']=='unavailable' and '模型' not in public['message'], public
+    for reason in ('完成步骤须先开始执行，并提供实际结果总结','已开始步骤的标题应保留，需要调整时新增步骤','已执行步骤不得从记录中删除'):
+        public = public_payload({'error':reason})['error']
+        assert reason in public and '重新发送' not in public, public
+    for error in ('HTTP 429', '当前服务请求较多，暂时无法生成。 请稍后重新发送请求。'):
+        public = public_payload({'sources':[{'source':'semantic_scholar','error':error}]})
+        message = public['sources'][0]['error']
+        assert '请求较多' in message and '生成' not in message and '稍后' in message, message
+    with temporary_directory() as directory, patch.object(Service, 'schedule'):
         service = Service(Path(directory) / 'missing', Path(directory))
         try:
+            # The filesystem boundary emulates Windows' default ANSI encoding.
+            fdopen = os.fdopen
+            def ansi_default(*args, **kwargs):
+                return fdopen(*args, **({'encoding': 'cp1252', **kwargs}))
+            with patch('backend.errors.os.fdopen', side_effect=ansi_default), patch.dict(os.environ, {'METHODATLAS_TEST_SECRET': 'note-test-secret'}):
+                info = record_error(service.store, ValueError('批注保存失败：保留中文与😀 note-test-secret sk-reader-secret Bearer note-test-secret'))
+            logged = json.loads((Path(directory) / 'logs' / 'errors.jsonl').read_text(encoding='utf-8').splitlines()[-1])
+            assert '批注保存失败：保留中文与😀' in logged['detail']
+            assert 'note-test-secret' not in logged['detail'] and 'sk-reader-secret' not in logged['detail']
+            assert logged['incident_id'] == info['incident_id']
+            record_error(service.store, RuntimeError('中文诊断 💡'))
+            diagnostic = (Path(directory) / 'logs' / 'errors.jsonl').read_text(encoding='utf-8')
+            assert '中文诊断 💡' in diagnostic and json.loads(diagnostic.splitlines()[-1])
             project = service.store.projects()[0]['id']
             conversation = service.store.conversations(project)[0]['id']
             sent = service.message(project, conversation, {'text':'核查论文', 'client_message_id':'error-check'})
@@ -27,7 +56,7 @@ def main():
             assert 'select_quote' not in task['error'], task['error']
             assert task['error_info']['code'] == 'evidence' and task['error_info']['action'] == 'new_request'
             assert task['error_info']['next_step'] and task['error_info']['incident_id']
-            logs = (Path(directory) / 'logs' / 'errors.jsonl').read_text()
+            logs = (Path(directory) / 'logs' / 'errors.jsonl').read_text(encoding='utf-8')
             assert 'select_quote' in logs and task['error_info']['incident_id'] in logs
             assert task['status'] == 'failed'
             resumed = service.control(project, conversation, task['id'], 'resume', {})
@@ -45,7 +74,7 @@ def main():
                     info = record_error(service.store, exc, tool='select_quote')
                 assert info['code'] == code and 'HTTP' not in info['message']
                 assert info['retryable'] == (code in ('rate_limit','unavailable'))
-            logs = (Path(directory) / 'logs' / 'errors.jsonl').read_text()
+            logs = (Path(directory) / 'logs' / 'errors.jsonl').read_text(encoding='utf-8')
             assert 'test-secret-value' not in logs and 'Traceback' in logs and '"http_status": 402' in logs
             upstream = RuntimeError('requests-style provider failure')
             upstream.response = SimpleNamespace(status_code=429)
@@ -54,7 +83,7 @@ def main():
             except ValueError as exc:
                 info = record_error(service.store, exc)
             assert info['code'] == 'rate_limit'
-            assert json.loads((Path(directory)/'logs'/'errors.jsonl').read_text().splitlines()[-1])['http_status'] == 429
+            assert json.loads((Path(directory)/'logs'/'errors.jsonl').read_text(encoding='utf-8').splitlines()[-1])['http_status'] == 429
             # A failed provider request must not exhaust the single content repair.
             paper = service.store.paste(project, '原文', 'The method uses point clouds.')
             tid = service.message(project, conversation, {'text':'生成方法比较','client_message_id':'repair'})['task_id']

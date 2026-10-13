@@ -260,7 +260,7 @@ def group_request(request):
 
 def code_snapshot(work, folder, name):
     """Small code/config snapshots outside writable sandbox; large binaries stay in workspace."""
-    # Design limit: code/config snapshots cap at 2 MiB/2000 files; use content-addressed archives for larger runs.
+    # code/config snapshots cap at 2 MiB/2000 files; use content-addressed archives for larger runs.
     records, total = [], 0
     for base, dirs, files in os.walk(work,followlinks=False):
         dirs[:] = [d for d in dirs if d not in ('.git','.venv','node_modules','__pycache__')]

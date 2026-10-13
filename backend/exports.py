@@ -17,7 +17,7 @@ import pymupdf
 from .state import json_text
 from .reporting import call_mimir
 
-# Design limit: serialize local exports; use a worker process if export throughput matters.
+# serialize local exports; use a worker process if export throughput matters.
 LOCK = threading.Lock()
 
 

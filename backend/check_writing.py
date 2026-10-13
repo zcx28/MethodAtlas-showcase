@@ -114,12 +114,12 @@ def main():
             changed = copy.deepcopy(values); changed[1]['children'][0]['text'] = '人工内容要保留'
             writing.save(project, aid, {'request_id':'manual-3','base_version_id':second['version_id'],'title':'论文','document':changed})
             accepted = writing.decide(project, aid, 'proposal-1', 'accept')
-            assert accepted['versions'][-1]['payload']['document'][0]['children'][1]['text'] == '表述'
-            assert accepted['versions'][-1]['payload']['document'][1]['children'][0]['text'] == '人工内容要保留'
-            assert len(writing.decide(project, aid, 'proposal-1', 'accept')['versions']) == 4
+            assert accepted['draft']['payload']['document'][0]['children'][1]['text'] == '表述'
+            assert accepted['draft']['payload']['document'][1]['children'][0]['text'] == '人工内容要保留'
+            assert len(writing.decide(project, aid, 'proposal-1', 'accept')['versions']) == 3
             assert writing.export(project, aid, first['version_id'], 'html')[0] == original
 
-            current = accepted['versions'][-1]
+            current = accepted['draft']
             replacement = copy.deepcopy(current['payload']['document']); replacement[0]['children'] = [{'text':'正文 42。'}]
             plans.append({'document':replacement,'summary':'修改首段'})
             request = {'request_id':'proposal-2','base_version_id':current['id'],'instruction':'润色首段','mode':'polish'}
@@ -147,15 +147,17 @@ def main():
                 {'id':'eq','type':'equation','formula':'E=mc^2','children':[{'text':''}]},
             ]
             saved = writing.save(project, aid, {'request_id':'structures','base_version_id':current['id'],'title':'论文结构','document':structure})
-            docx = Document(io.BytesIO(writing.export(project, aid, saved['version_id'], 'docx')[0]))
+            raw_docx, filename = writing.export(project, aid, saved['version_id'], 'docx')
+            assert filename.endswith('.docx'), filename
+            docx = Document(io.BytesIO(raw_docx))
             assert docx.tables[0].cell(0,0).text == '42' and len(docx.inline_shapes) == 2
             assert any('研究方法' in p.text for p in docx.paragraphs)
             raw = writing.export(project, aid, saved['version_id'], 'pdf')[0]
             with pymupdf.open(stream=raw) as pdf:
                 assert '42' in ''.join(p.get_text() for p in pdf) and len(pdf) > 0
             restored = writing.restore(project, aid, {'request_id':'restore','version_id':first['version_id'],'base_version_id':saved['version_id']})
-            assert restored['version_no'] == saved['version_no'] + 1
-            assert writing.get(project, aid)['versions'][-1]['payload']['document'] == value
+            assert restored['version_no'] == saved['version_no']
+            assert writing.get(project, aid)['draft']['payload']['document'] == value
             assert store.messages(store.conversations(project)[0]['id']) == [], 'Right-side edits leaked into chat'
         finally:
             research.close(); provider.shutdown(); provider.server_close()
@@ -207,7 +209,7 @@ def real_check(source_db):
             assert proposal['status'] == 'pending', proposal['error']
             assert len(item['versions']) == current['version_no']
             item = writing.decide(project,aid,request_id,'accept')
-            selected = item['versions'][-1]
+            selected = item['draft']
             for kind in ('html','pdf','docx'):
                 raw, _ = writing.export(project,aid,selected['id'],kind)
                 (root / f'{mode}-v{selected["version_no"]}.{kind}').write_bytes(raw)

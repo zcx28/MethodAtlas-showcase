@@ -1,8 +1,9 @@
 """External HTTP regression check for #12 (no provider credentials required)."""
 import json
+import hashlib
 import sqlite3
 import io
-import tempfile
+from .check_support import temporary_directory
 import threading
 import time
 import urllib.error
@@ -114,7 +115,7 @@ def main():
         else:
             raise AssertionError('Invalid DOCX citation accepted')
     # Windows cannot always remove the SDK's deeply nested profile links.
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
+    with temporary_directory() as directory:
         root = Path(directory)
         (root / 'papers').mkdir()
         pdf = pymupdf.open()
@@ -134,7 +135,12 @@ def main():
                 assert all(t['function']['name'].startswith('mcp__methodatlas__') for t in body.get('tools', [])), 'Unexpected shell or other model tools'
                 # Existing cases exercise Agent/tool contracts; route them explicitly.
                 planning = any('默认mode="rag"' in str(m.get('content', '')) for m in body['messages'])
-                pipeline_case = isinstance(plans[0], dict) and plans[0].get('_rag', False)
+                explaining = any('解释为什么当前请求不能生成' in str(m.get('content', '')) for m in body['messages'])
+                if explaining:
+                    raw = json.dumps({'error':{'message':'Controlled explanation fallback'}}).encode()
+                    self.send_response(400); self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
+                    return
+                pipeline_case = bool(plans) and isinstance(plans[0], dict) and plans[0].get('_rag', False)
                 if planning and not pipeline_case:
                     step = {'role': 'assistant', 'content': json.dumps({'intent':'research','mode':'explore', 'reason':'测试探索工具契约', 'only_selected':False})}
                 else:
@@ -166,7 +172,7 @@ def main():
 
         provider = ThreadingHTTPServer(('127.0.0.1',0),Provider)
         threading.Thread(target=provider.serve_forever,daemon=True).start()
-        service = Service(root / 'papers', root / 'data')
+        service = Service(root / 'papers', root / 'data', background=False)
         service.research.key = 'local-test-only'
         service.research.base_url = f'http://127.0.0.1:{provider.server_port}'
         handler = type('CheckHandler', (Handler,), {'service': service})
@@ -225,7 +231,10 @@ def main():
             assert paper['pages'][0]['text'] == '蓝色方法只在室内验证。'
             print('PASS: pasted material persists with a source version')
             raced_pdf = root / 'replaced-during-parse.pdf'
-            raced_pdf.write_bytes((root / 'papers' / 'check.pdf').read_bytes())
+            with pymupdf.open() as fresh:
+                fresh.new_page().insert_text((60,80), 'Unique original bytes for immutable parse check.')
+                original_bytes = fresh.tobytes()
+            raced_pdf.write_bytes(original_bytes)
             replacement = pymupdf.open()
             replacement.new_page().insert_text((60,80), 'Replacement bytes must not inherit original evidence.')
             replacement_bytes = replacement.tobytes()
@@ -237,12 +246,11 @@ def main():
                     yield parsed
                 raced_pdf.write_bytes(replacement_bytes)
             with patch('backend.pdf.pymupdf.open', replace_after_parse):
-                try:
-                    service.store.import_pdf(project['id'], raced_pdf)
-                except ValueError as error:
-                    assert '改变' in str(error)
-                else:
-                    raise AssertionError('evidence was bound to replacement PDF bytes')
+                imported = service.store.import_pdf(project['id'], raced_pdf)
+            saved = service.store.paper(project['id'], imported)
+            assert saved['sha256'] == hashlib.sha256(original_bytes).hexdigest()
+            assert Path(saved['source_path']).read_bytes() == original_bytes
+            assert raced_pdf.read_bytes() == replacement_bytes
             plans.extend([{**final(json.dumps({'intent':'chat','mode':'rag','only_selected':True,'reads':[], 'files':[]})), '_rag':True},
                           final(json.dumps({'answer':'你好。', 'files':[]}))])
             ordinary, response, task = submit('你好', 'ordinary')
@@ -428,7 +436,7 @@ def main():
             plans.extend([tool('save_context', {'summary':'用户要求保留所有历史版本；研究进度保存在卡中。'}), final('已保存研究交接。')])
             submit('保留下一轮研究约定', 'handoff-memory')
             service.close()
-            service = Service(root / 'papers', root / 'data')
+            service = Service(root / 'papers', root / 'data', background=False)
             service.research.key = 'local-test-only'
             service.research.base_url = f'http://127.0.0.1:{provider.server_port}'
             handler.service = service
@@ -451,23 +459,17 @@ def main():
                 assert body.get('thinking', {}).get('type') == 'disabled'
                 assert all('paper_id' not in e and 'rect' not in e for e in context['evidence'])
                 return final(json.dumps({'claims':[{'text':'Blue method uses point clouds.', 'quotes':[{'id':context['evidence'][0]['id'],'quote':context['evidence'][0]['quote']}]}], 'gaps':['No visual figure understanding.']}))
-            def card_verifier(body):
-                context = json.loads(body['messages'][-1]['content'])
-                assert len(context['claims']) == 1 and not body.get('tools')
-                assert body.get('thinking', {}).get('type') == 'disabled'
-                assert 'point clouds' in context['evidence'][context['claims'][0]['evidence'][0]['id']]['quote']
-                return final(json.dumps({'verdicts':[{'index':0,'supported':True,'reason':'Explicit source text.'}]}))
             def card_selector(body):
                 context = json.loads(body['messages'][-1]['content'])
-                assert set(context) == {'title','question','claims','gaps'} and not body.get('tools')
+                assert set(context) == {'title','question','claims','gaps','original_request'} and not body.get('tools')
                 assert context['claims'][0]['text'] == 'Blue method uses point clouds.'
                 return final(json.dumps({'selected':[0],'gaps':context['gaps']}))
-            plans.extend([tool('set_scope',{'only_selected':True}), tool('research_paper',{'paper_id':pdf_id,'question':'Compare method and evidence'}), card_worker, card_selector, card_verifier, final('研究卡已保存。')])
+            plans.extend([tool('set_scope',{'only_selected':True}), tool('research_paper',{'paper_id':pdf_id,'question':'Compare method and evidence'}), card_worker, card_selector, final('研究卡已保存。')])
             _, _, card_task = submit('保存分篇研究卡', 'paper-card')
             assert card_task['coverage'][c['paper_version_id']]['read_blocks'] == 2
             assert service.store.one('SELECT complete FROM paper_cards WHERE conversation_id=?', (conversation,))['complete'] == 1
             service.close()
-            service = Service(root / 'papers', root / 'data')
+            service = Service(root / 'papers', root / 'data', background=False)
             service.research.key = 'local-test-only'
             service.research.base_url = f'http://127.0.0.1:{provider.server_port}'
             handler.service = service
@@ -478,7 +480,7 @@ def main():
                 assert result['reused'] and len(result['card']['claims']) == 1
                 return tool('read_evidence', {'citation_ids':result['card']['claims'][0]['citation_ids']})
             plans.extend([tool('set_scope',{'only_selected':True}), tool('research_paper',{'paper_id':pdf_id,'question':'Compare method and evidence'}), check_reused, final('复用研究卡并回读依据。')])
-            _, _, reused = submit('同一问题复用研究卡', 'reuse-paper-card')
+            _, _, reused = submit('保存分篇研究卡', 'reuse-paper-card')
             assert not reused['coverage']
             card_key = (conversation, c['paper_version_id'], 'Compare method and evidence')
             card_sql = 'SELECT * FROM paper_cards WHERE conversation_id=? AND paper_version_id=? AND question=?'
@@ -492,12 +494,6 @@ def main():
                 return tool('revise_paper_card', {'paper_id':pdf_id, 'question':card_key[2], 'remove_texts':[],
                             'claims':[{'text':correction_text, 'citation_ids':[result['evidence'][0]['id']]}],
                             'gaps':['No visual figure understanding.']})
-            def correction_verifier(body):
-                context = json.loads(body['messages'][-1]['content'])
-                assert not body.get('tools') and len(context['claims']) == 1
-                assert context['claims'][0]['text'] == correction_text
-                assert 'indoors only' in context['evidence'][context['claims'][0]['evidence'][0]['id']]['quote']
-                return final(json.dumps({'verdicts':[{'index':0, 'supported':True, 'reason':'Explicit condition.'}]}))
             def correction_saved(body):
                 result = json.loads(body['messages'][-1]['content'])
                 if 'saved' not in result:
@@ -507,7 +503,7 @@ def main():
                 assert result['card']['claims'][1]['citation_ids'][0].startswith('E')
                 return final('局部条件已修正，既有主张保留。')
             plans.extend([tool('set_scope',{'only_selected':True}), tool('read_material',{'paper_id':pdf_id,'query':'indoors'}),
-                          revise_from_evidence, correction_verifier, correction_saved])
+                          revise_from_evidence, correction_saved])
             _, _, revised_card_task = submit('只补充研究卡的评估条件', 'revise-paper-card')
             saved_card_row = dict(service.store.one(card_sql, card_key))
             revised_card = json.loads(saved_card_row['body'])
@@ -518,36 +514,17 @@ def main():
             invalid_correction = {'paper_id':pdf_id, 'question':card_key[2],
                                   'remove_texts':[original_card['claims'][0]['text']],
                                   'claims':[{'text':'Evaluation includes outdoor trials.',
-                                             'citation_ids':revised_card['claims'][-1]['citation_ids']}], 'gaps':[]}
-            def rejected_correction_verifier(body):
-                context = json.loads(body['messages'][-1]['content'])
-                assert len(context['claims']) == 1 and not body.get('tools')
-                assert context['claims'][0]['text'] == invalid_correction['claims'][0]['text']
-                return final(json.dumps({'verdicts':[{'index':0, 'supported':False, 'reason':'Source says indoors only.'}]}))
-            def correction_not_saved(body):
-                result = json.loads(body['messages'][-1]['content'])
-                if 'saved' not in result:
-                    result = json.loads(result['content'][0]['text'])
-                assert result['saved'] is False and result['verdicts'][0]['supported'] is False
-                return final('不支持的修正未保存。')
+                                             'citation_ids':['cite_' + '0' * 32]}], 'gaps':[]}
             plans.extend([tool('set_scope',{'only_selected':True}), tool('revise_paper_card',invalid_correction),
-                          rejected_correction_verifier, correction_not_saved])
+                          final('无效引用的修正未保存。')])
             submit('失败的局部修正不能删除原主张或缺口', 'reject-paper-card-revision')
             assert dict(service.store.one(card_sql, card_key)) == saved_card_row
-            print('PASS: local card correction verifies only additions, preserves prior claims and rejects changes atomically')
-            # A new wording reuses full extraction; interrupted verification retains selection too.
-            service.store.run('DELETE FROM claim_checks')
-            plans.extend([tool('set_scope',{'only_selected':True}), tool('research_paper',{'paper_id':pdf_id,'question':'Resume verification'}), card_selector,
-                          {'_http_error':{'status':402,'message':'Insufficient Balance'}}, final('核验失败，已保留提取和选择。')])
-            submit('保存中间卡后发生核验故障', 'partial-paper-card')
-            extraction = service.store.one('SELECT * FROM paper_extractions WHERE version_id=?', (c['paper_version_id'],))
-            assert extraction['next_offset'] == 2 and extraction['complete']
-            partial_card = service.store.one('SELECT * FROM paper_cards WHERE conversation_id=? AND question=?', (conversation,'Resume verification'))
-            assert partial_card['next_offset'] == 2 and not partial_card['complete']
-            plans.extend([tool('set_scope',{'only_selected':True}), tool('research_paper',{'paper_id':pdf_id,'question':'Resume verification'}), card_verifier, final('续接已完成。')])
-            _, _, resumed_card = submit('从保存的卡续接核验', 'resume-paper-card')
-            assert not resumed_card['coverage']
-            assert service.store.one('SELECT complete FROM paper_cards WHERE conversation_id=? AND question=?', (conversation,'Resume verification'))['complete']
+            print('PASS: local card correction preserves prior claims and rejects invalid references atomically')
+            # A new wording reuses extraction; ADR009 does not add a verifier call.
+            plans.extend([tool('set_scope',{'only_selected':True}), tool('research_paper',{'paper_id':pdf_id,'question':'New selection'}), card_selector, final('已复用提取结果。')])
+            _, _, selected_card = submit('复用提取并重新选择', 'reselect-paper-card')
+            assert not selected_card['coverage']
+            assert service.store.one('SELECT complete FROM paper_cards WHERE conversation_id=? AND question=?', (conversation,'New selection'))['complete']
             candidate_pdf = pymupdf.open()
             candidate_page = candidate_pdf.new_page()
             for index in range(6):
@@ -570,43 +547,26 @@ def main():
                 assert [c['text'] for c in context['claims']] == candidate_texts
                 assert len(context['gaps']) == 13 and not body.get('tools')
                 return final(json.dumps({'selected':list(reversed(range(24))), 'gaps':[]}))
-            verified_candidate_texts = []
-            def verify_candidates(body):
-                context = json.loads(body['messages'][-1]['content'])
-                expected = list(reversed(candidate_texts[:24]))
-                start = len(verified_candidate_texts)
-                assert [c['text'] for c in context['claims']] == expected[start:start + 8]
-                assert all(len({e['id'] for e in c['evidence']}) == 4 for c in context['claims'])
-                verified_candidate_texts.extend(c['text'] for c in context['claims'])
-                if len(verified_candidate_texts) < len(expected):
-                    plans.appendleft(verify_candidates)
-                return final(json.dumps({'verdicts':[{'index':c['index'], 'supported':c['text'] != expected[-1],
-                                                      'reason':'Controlled unsupported selection.' if c['text'] == expected[-1] else 'Supported selection.'} for c in context['claims']]}))
             plans.extend([tool('set_scope',{'only_selected':True}), tool('research_paper',{'paper_id':pdf_id,'question':'Many valid intermediate candidates'}),
-                          many_candidates, select_candidates, verify_candidates, final('只保存选中且核验通过的主张。')])
+                          many_candidates, select_candidates, final('保存选中分析，不自动核验原文。')])
             submit('保留较多中间候选后选择并核验', 'many-paper-candidates')
             candidate_row = service.store.one('SELECT * FROM paper_cards WHERE conversation_id=? AND question=?', (conversation,'Many valid intermediate candidates'))
             candidate_card = json.loads(candidate_row['body'])
             assert candidate_row['complete'] and candidate_row['next_offset'] == 6
-            assert [c['text'] for c in candidate_card['claims']] == verified_candidate_texts[:-1]
-            assert len(candidate_card['claims']) == 23
+            assert [c['text'] for c in candidate_card['claims']] == list(reversed(candidate_texts[:24]))
+            assert len(candidate_card['claims']) == 24 and candidate_card['verified'] is False
             assert len(set(candidate_card['claims'][0]['citation_ids'])) == 4
-            assert len(json_text(candidate_card)) <= 18000 and any(candidate_texts[0] in gap for gap in candidate_card['gaps'])
+            assert len(json_text(candidate_card)) <= 18000
             large_card_revision = {'paper_id':pdf_id, 'question':'Many valid intermediate candidates', 'remove_texts':[],
                                    'claims':[{'text':correction_text, 'citation_ids':candidate_card['claims'][0]['citation_ids'][:1]}], 'gaps':[]}
-            def large_card_verifier(body):
-                context = json.loads(body['messages'][-1]['content'])
-                assert len(context['claims']) == 1 and context['claims'][0]['text'] == correction_text
-                assert 'indoors' in context['evidence'][context['claims'][0]['evidence'][0]['id']]['quote']
-                return final(json.dumps({'verdicts':[{'index':0, 'supported':True, 'reason':'Explicit indoor condition.'}]}))
             plans.extend([tool('set_scope',{'only_selected':True}), tool('revise_paper_card',large_card_revision),
-                          large_card_verifier, final('长度预算内的大卡局部修正已保存。')])
+                          final('长度预算内的大卡局部修正已保存。')])
             submit('允许已完成研究卡局部修正', 'revise-many-paper-candidates')
             corrected = json.loads(service.store.one('SELECT body FROM paper_cards WHERE conversation_id=? AND question=?', (conversation,'Many valid intermediate candidates'))['body'])
             assert corrected['claims'][:-1] == candidate_card['claims'] and corrected['claims'][-1]['text'] == correction_text
-            assert len(corrected['claims']) == 24 and len(json_text(corrected)) <= 18000
+            assert len(corrected['claims']) == 25 and len(json_text(corrected)) <= 18000
             pdf_id = previous_pdf_id
-            print('PASS: 75 extracted candidates select 24, verify in batches, reject unsupported facts and retain valid corrections')
+            print('PASS: 75 extracted candidates select 24 without mandatory verification and retain local corrections')
             # Exercise the bundled compactor using actual tool history and local provider usage.
             compaction_source = request(f'/api/projects/{project["id"]}/materials',
                                         {'title':'Compaction source', 'text':'OLD_COMPACTION_CONTEXT ' + 'source detail ' * 3000})
@@ -784,7 +744,7 @@ def main():
             _, _, too_long = submit('Reject overflowing captions', 'report-overflow')
             assert not too_long['files']
             service.close()
-            service = Service(root / 'papers', root / 'data')
+            service = Service(root / 'papers', root / 'data', background=False)
             service.research.key = 'local-test-only'
             service.research.base_url = f'http://127.0.0.1:{provider.server_port}'
             handler.service = service
@@ -821,21 +781,17 @@ def main():
                     cid = context['evidence'][0]['evidence'][0]['id']
                     return final(json.dumps({'answer':'已根据原文生成。', 'files':[{
                         'title':skill, 'kind':'docx', 'content':f'原文依据。[cite:{cid}]', 'citation_ids':[cid]}]}))
-                def skill_review(body):
-                    context = json.loads(body['messages'][-1]['content'])
-                    assert context['mode'] == 'document' and context['draft']['title'] == skill
-                    qid, quote = next(iter(context['quotes'].items()))
-                    return final(json.dumps({'content':f'{quote["text"]}[cite:{qid}]', 'citation_ids':[qid]}))
                 plans.extend([{**final(json.dumps({'intent':'research','mode':'rag','only_selected':True,
-                    'skills':[skill], 'reads':[{'paper_id':pdf_id,'query':'evidence'}], 'files':[]})), '_rag':True}, skill_response, skill_review])
+                    'skills':[skill], 'reads':[{'paper_id':pdf_id,'query':'evidence'}], 'files':[]})), '_rag':True}, skill_response])
                 sent, _, outcome = submit('根据材料生成研究成果：' + skill, skill)
                 assert len(outcome['files']) == 1
                 assert any(e['status'] == 'skill_loaded' for e in outcome['events'])
                 assert request(message_path, sent)['duplicate']
                 version = request(f'/api/projects/{project["id"]}/artifacts/{outcome["artifact_id"]}')['versions'][0]
                 assert version['citations'] and version['materials']
-                assert version['citations'][0]['quote'] in version['body']
-                assert any(e['status'] == 'review' for e in outcome['events'])
+                assert version['body'] == '原文依据。[1]' and len(version['citations']) == 1
+                assert not any(e['status'] == 'review' for e in outcome['events'])
+                assert not plans, 'ADR009 forbids an implicit source-review model call'
                 file = outcome['files'][0]
                 assert binary(f'/api/projects/{project["id"]}/artifacts/{file["artifact_id"]}/versions/{file["version_id"]}/download').startswith(b'PK')
             print('PASS: three first-party built-in Skills load through actual Harness, with versioned cited files and duplicate protection')
@@ -868,6 +824,7 @@ def main():
             service.close()
             provider.shutdown()
             provider.server_close()
+    assert not Path(directory).exists(), 'Harness temporary directory was not removed'
 
 
 if __name__ == '__main__':

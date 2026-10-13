@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import secrets
-import tempfile
 import threading
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -12,6 +11,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError
 from .state import json_text, new_id, now
 from .errors import AppError, failure_message, http_code
+from .storage import atomic_write
 
 STYLE = {'brief':'先给简明结论，省略不必要的展开。', 'balanced':'先给结论，再解释关键依据。', 'detailed':'详细说明证据、比较条件、推导和局限。'}
 LANGUAGE = {'auto':'跟随本次用户提问的语言。', 'zh':'默认用中文回答，保留必要的原文术语。', 'en':'Default to English, preserving original terms.'}
@@ -22,8 +22,85 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def completion_message(response):
+    """Read bounded Chat Completions probes, including streamed function deltas."""
+    limit = 1000000
+    if 'text/event-stream' not in response.headers.get('Content-Type',''):
+        raw = response.read(limit + 1)
+        if len(raw) > limit: raise ValueError('模型响应过大')
+        return json.loads(raw)['choices'][0]['message']
+    message, calls, data, size, finished = {'content':'','reasoning_content':''}, {}, [], 0, False
+    def event():
+        nonlocal finished
+        payload = '\n'.join(data); data.clear()
+        if payload == '[DONE]':
+            if not finished: raise ValueError('模型流未完整结束')
+            return True
+        chunk = json.loads(payload)
+        if chunk.get('error'): raise ValueError('模型流返回错误')
+        for choice in chunk['choices']:
+            if choice.get('index',0) != 0: continue
+            delta = choice['delta']
+            for field in ('content','reasoning_content'):
+                value = delta.get(field)
+                if value is not None:
+                    if not isinstance(value,str): raise ValueError('模型流文本无效')
+                    message[field] += value
+            for part in delta.get('tool_calls',[]):
+                index = part['index']
+                if type(index) is not int or not 0 <= index < 20: raise ValueError('模型工具索引无效')
+                call = calls.setdefault(index,{'id':'','type':'function','function':{'name':'','arguments':''}})
+                if part.get('id'): call['id'] += part['id']
+                for field in ('name','arguments'):
+                    value = part.get('function',{}).get(field)
+                    if value is not None:
+                        if not isinstance(value,str): raise ValueError('模型工具增量无效')
+                        call['function'][field] += value
+            if choice.get('finish_reason') is not None: finished = True
+        return False
+    while True:
+        raw = response.readline(limit + 1)
+        size += len(raw)
+        if size > limit: raise ValueError('模型响应过大')
+        if not raw:
+            if data: event()
+            if not finished: raise ValueError('模型流在完成前中断')
+            break
+        line = raw.decode('utf-8-sig').rstrip('\r\n')
+        if not line:
+            if data and event(): break
+        elif line.startswith('data:'):
+            data.append(line[5:].removeprefix(' '))
+    message['tool_calls'] = [calls[index] for index in sorted(calls)]
+    return message
+
+
 def public(config):
     return {k:v for k,v in config.items() if k != 'api_key'} | {'has_key':bool(config.get('api_key'))}
+
+
+def streaming_message(response):
+    message, calls, size, finished = {'content':'','reasoning_content':''}, {}, 0, False
+    for line in response:
+        size += len(line)
+        if size > 1000000: raise ValueError('模型测试响应过大')
+        if not line.startswith(b'data:'): continue
+        data = line[5:].strip()
+        if data == b'[DONE]':
+            finished = True
+            break
+        chunk = json.loads(data)
+        if chunk.get('error'): raise ValueError('模型测试流返回错误')
+        for choice in chunk.get('choices',[]):
+            finished = finished or bool(choice.get('finish_reason'))
+            delta = choice.get('delta',{})
+            for field in message: message[field] += delta.get(field) or ''
+            for call in delta.get('tool_calls') or []:
+                function = calls.setdefault(call['index'], {'name':'','arguments':''})
+                for field in function: function[field] += call.get('function',{}).get(field) or ''
+    if not finished: raise ValueError('模型测试流未完整结束')
+    if calls: message['tool_calls'] = [{'function':function} for function in calls.values()]
+    return message
 
 
 def effort_for(config, options, role):
@@ -43,7 +120,9 @@ def provider_patch(config, effort, timeout=180000):
     """Reuse the SDK's bundled adapter; credentials only enter the child environment."""
     retries = {'mode':'normal','maxRetries':1 if timeout == 10000 else 2,'backoff':{'initialDelayMs':250,'maxDelayMs':1000,'jitterRatio':0}}
     if config['protocol'] == 'deepseek':
-        return [], {'model':config['model'], 'api_key':config['api_key'], 'base_url':config['base_url'], 'env':{'DSH_TELEMETRY_DISABLED':'1'}}, effort
+        # The local plugin resolves to our unversioned frontend manifest; omit optional SDK inventory.
+        patches = [{'id':'plugin-package-inventory-deepseek','disabled':True}, {'insert':[{'id':'methodatlas-auto-tools','name':str(Path(__file__).with_name('harness-auto-tools.mjs'))}]}]
+        return patches, {'model':config['model'], 'api_key':config['api_key'], 'base_url':config['base_url'], 'env':{'DSH_TELEMETRY_DISABLED':'1'}}, effort
     compat = {'supportsStore':False,'supportsDeveloperRole':False,'maxTokensField':config.get('token_field','max_tokens'), 'supportsReasoningEffort':config['reasoning'] == 'openai'}
     route = {'api':'openai-completions','baseURL':config['base_url'],'apiKeyEnv':'METHODATLAS_MODEL_KEY',
              'streamIdleTimeoutMs':timeout,'retryPolicy':retries,'compat':compat,
@@ -59,51 +138,132 @@ def provider_patch(config, effort, timeout=180000):
 
 
 class ModelSettings:
-    def __init__(self, store, research):
+    def __init__(self, store, research, workspace=None):
         self.store, self.research = store, research
+        self.workspace_id = workspace
+        self.workspaces = {}
         self.lock = threading.RLock()
-        self.path = store.root / 'private' / 'model-connections.json'
-        self.path.parent.mkdir(mode=0o700, exist_ok=True)
+        self.path = store.root / 'private' / 'model-connections.json' if not workspace else store.root / 'private' / 'workspaces' / workspace / 'model-connections.json'
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.path.parent, 0o700)
-        self.data = json.loads(self.path.read_text()) if self.path.exists() else {'connections':{},'versions':{},'default_id':''}
+        self.data = json.loads(self.path.read_text(encoding='utf-8')) if self.path.exists() else {'connections':{},'versions':{},'default_id':''}
         store.run("CREATE TABLE IF NOT EXISTS conversation_preferences(conversation_id TEXT PRIMARY KEY,body TEXT NOT NULL)")
-        store.model_settings = self
+        if not workspace:
+            store.model_settings = self
+            store.run('CREATE TABLE IF NOT EXISTS project_models(project_id TEXT NOT NULL,connection_id TEXT NOT NULL,is_default INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(project_id,connection_id))')
+            store.run('CREATE UNIQUE INDEX IF NOT EXISTS project_default_model ON project_models(project_id) WHERE is_default=1')
+
+    @property
+    def online(self):
+        return bool(getattr(self.store, 'collaboration', None) and self.store.collaboration.online)
+
+    def for_workspace(self, workspace):
+        with self.store.transaction(), self.lock:
+            if not self.store.one('SELECT 1 FROM workspaces WHERE id=?', (workspace,)):
+                raise PermissionError('团队不可访问')
+            if workspace not in self.workspaces:
+                self.workspaces[workspace] = ModelSettings(self.store, self.research, workspace)
+            return self.workspaces[workspace]
+
+    def for_project(self, project):
+        if not self.online:
+            return self
+        scope = self.store.one('SELECT workspace_id FROM project_scopes WHERE project_id=?', (project,))
+        if not scope or self.workspace_id and scope['workspace_id'] != self.workspace_id:
+            raise PermissionError('模型连接不属于项目团队')
+        return self if self.workspace_id else self.for_workspace(scope['workspace_id'])
+
+    def grant(self, project, body, user=None):
+        self.for_project(project)
+        if not self.workspace_id or set(body) - {'project_id', 'connection_id', 'enabled', 'default'} or type(body.get('enabled')) is not bool or type(body.get('default', False)) is not bool:
+            raise ValueError('模型授权字段无效')
+        ident = body.get('connection_id')
+        cancelled = []
+        with self.store.transaction() as db, self.lock:
+            if self.online:
+                if not user:
+                    raise PermissionError('资源授权缺少已验证的操作者')
+                self.store.collaboration.workspace(user, self.workspace_id, owner=True)
+            if not isinstance(ident, str) or ident not in self.data['connections']:
+                raise PermissionError('模型连接不属于当前团队')
+            if body['enabled']:
+                make_default = body.get('default', False) or not db.execute('SELECT 1 FROM project_models WHERE project_id=? AND is_default=1', (project,)).fetchone()
+                if make_default:
+                    db.execute('UPDATE project_models SET is_default=0 WHERE project_id=?', (project,))
+                db.execute('INSERT INTO project_models VALUES(?,?,?) ON CONFLICT(project_id,connection_id) DO UPDATE SET is_default=MAX(is_default,excluded.is_default)', (project, ident, int(make_default)))
+            else:
+                db.execute('DELETE FROM project_models WHERE project_id=? AND connection_id=?', (project, ident))
+                cancelled = self.fence_uses(db, ident, project)
+            if self.online:
+                self.store.collaboration.event(project, user['id'], 'model_access_changed', ident, {'enabled': body['enabled'], 'default': body.get('default', False)})
+        for run in cancelled:
+            self.research.cancel(run['id'], run['revision'])
+        return self.view(project)
+
+    def fence_uses(self, db, ident, project=None):
+        runs = db.execute("SELECT id,revision FROM tasks WHERE status IN ('queued','routing','running','waiting') AND json_extract(refs,'$.model_config.connection_id')=? AND (? IS NULL OR project_id=?)", (ident, project, project)).fetchall()
+        for run in runs:
+            db.execute("UPDATE tasks SET status='stopped',revision=revision+1,updated=? WHERE id=?", (now(), run['id']))
+            self.store.event(run['id'], 'stopped', '模型授权已撤销，运行已停止')
+        return runs
+
+    def authorize_binding(self, task, bound):
+        if not self.online:
+            return
+        settings = self.for_project(task['project_id'])
+        if bound.get('workspace_id') != settings.workspace_id:
+            raise PermissionError('运行模型未绑定当前团队')
+        settings.selected(bound.get('connection_id') or '', project=task['project_id'])
 
     def write(self):
-        fd, filename = tempfile.mkstemp(dir=self.path.parent, prefix='.models-')
         try:
-            with os.fdopen(fd,'w',encoding='utf-8') as file:
-                json.dump(self.data,file,ensure_ascii=False)
-                file.flush(); os.fsync(file.fileno())
-            os.replace(filename,self.path)
+            atomic_write(self.path, json_text(self.data).encode('utf-8'))
         except OSError:
-            self.data = json.loads(self.path.read_text()) if self.path.exists() else {'connections':{},'versions':{},'default_id':''}
+            self.data = json.loads(self.path.read_text(encoding='utf-8')) if self.path.exists() else {'connections':{},'versions':{},'default_id':''}
             raise ValueError('模型配置写入失败，原有配置已保留，请检查本机磁盘') from None
-        finally:
-            if os.path.exists(filename): os.unlink(filename)
 
     def fallback(self):
+        if self.workspace_id or self.online:
+            return {'id':'', 'name':'尚未配置项目模型', 'model':'', 'api_key':'', 'protocol':'deepseek', 'efforts':[], 'tools':False, 'vision':False, 'checks':{}}
         return {'id':'','name':'应用默认模型','protocol':'deepseek','base_url':self.research.base_url,
                 'model':self.research.model,'api_key':self.research._key,'reasoning':'deepseek',
                 'efforts':['off','low','high'],'vision':self.research.model == 'deepseek-flash','tools':True,'context_window':1000000,'max_output':32768,
                 'checks':{},'source':'environment'}
 
-    def selected(self, connection_id=None):
+    def selected(self, connection_id=None, project=None):
+        if self.online and not self.workspace_id:
+            if not project:
+                raise PermissionError('在线模型连接必须绑定项目')
+            return self.for_project(project).selected(connection_id, project)
+        if self.workspace_id and project:
+            self.for_project(project)
+            grant = self.store.one('SELECT connection_id FROM project_models WHERE project_id=? AND ' + ('is_default=1' if connection_id is None else 'connection_id=?'), (project,) if connection_id is None else (project, connection_id))
+            if not grant:
+                raise PermissionError('项目尚未获授权使用此模型，请由团队负责人配置')
+            connection_id = grant['connection_id']
         with self.lock:
             ident = self.data['default_id'] if connection_id is None else connection_id
             if ident:
                 if ident not in self.data['connections']:
                     raise ValueError('所选模型连接已删除，请重新选择；没有自动切换模型')
                 return copy.deepcopy(self.data['connections'][ident])
+            if self.workspace_id:
+                raise ValueError('团队尚未配置模型连接')
             return self.fallback()
 
-    def view(self):
+    def view(self, project=None):
+        if self.online and not self.workspace_id:
+            return self.for_project(project).view(project)
+        grants = self.store.all('SELECT connection_id,is_default FROM project_models WHERE project_id=?', (project,)) if project else None
+        allowed = {r['connection_id'] for r in grants} if grants is not None else None
         with self.lock:
-            return {'connections':[public(v) for v in self.data['connections'].values()], 'default_id':self.data['default_id'],
-                    'language':self.data.get('language','auto'), 'fallback':public(self.fallback()), 'data_directory':str(self.store.root), 'backend':'running','version':'本地研究工作台 · 设置 v1'}
+            return {'connections':[public(v) for v in self.data['connections'].values() if allowed is None or v['id'] in allowed], 'default_id':next((r['connection_id'] for r in grants if r['is_default']), '') if grants is not None else self.data['default_id'],
+                    'language':self.data.get('language','auto'), 'fallback':public(self.fallback()), 'data_directory':'' if self.online else str(self.store.root), 'backend':'running','version':'团队研究工作台' if self.online else '本地研究工作台 · 设置 v1', 'workspace_id': self.workspace_id}
 
     def validate(self, body):
-        if not isinstance(body,dict) or set(body) - {'id','name','protocol','base_url','model','api_key','reasoning','context_window','max_output','token_field','make_default'}:
+        if self.online and not self.workspace_id:
+            raise PermissionError('在线模型配置必须属于团队')
+        if not isinstance(body,dict) or set(body) - {'id','name','protocol','base_url','model','api_key','reasoning','context_window','max_output','token_field','make_default','rates'}:
             raise ValueError('模型连接字段无效')
         if body.get('id') is not None and not isinstance(body['id'],str): raise ValueError('模型连接标识无效')
         with self.lock:
@@ -118,6 +278,10 @@ class ModelSettings:
             raise ValueError('API 地址须为不含账号、查询参数的 HTTP(S) 地址')
         if url.scheme != 'https' and url.hostname not in ('localhost','127.0.0.1','::1'):
             raise ValueError('远程 API 地址必须使用 HTTPS；本机服务可以使用 HTTP')
+        if self.online:
+            hosts = {'api.deepseek.com', 'api.openai.com'} | {h.strip().lower() for h in os.getenv('METHODATLAS_MODEL_HOSTS', '').split(',') if h.strip()}
+            if url.hostname.lower() not in hosts:
+                raise PermissionError('此模型主机尚未获部署管理员授权')
         value['base_url'] = value['base_url'].rstrip('/').removesuffix('/chat/completions')
         value.setdefault('protocol','openai')
         if value['protocol'] not in ('deepseek','openai'): raise ValueError('请选择 DeepSeek 或 OpenAI 兼容接口')
@@ -128,6 +292,8 @@ class ModelSettings:
         if key is not None and (not isinstance(key,str) or len(key)>4096 or '\n' in key or '\r' in key):
             raise ValueError('API Key 格式无效')
         value['api_key'] = key.strip() if key else old.get('api_key','')
+        from .resource_limits import price_rates
+        value['rates'] = price_rates(value.get('rates'))
         if not value['api_key'] and url.hostname not in ('localhost','127.0.0.1','::1'): raise ValueError('请填写 API Key')
         for field, default, low, high in (('context_window',128000,4096,2000000),('max_output',32768,256,131072)):
             value.setdefault(field,default)
@@ -152,28 +318,39 @@ class ModelSettings:
         return self.view()
 
     def global_preferences(self, body):
+        if self.online and not self.workspace_id:
+            raise PermissionError('在线模型配置必须属于团队')
         if set(body) != {'language'} or not isinstance(body['language'],str) or body['language'] not in LANGUAGE: raise ValueError('回答语言无效')
         with self.lock:
             self.data['language'] = body['language']; self.write()
         return self.view()
 
     def change(self, action, body):
+        if self.online and not self.workspace_id:
+            raise PermissionError('在线模型配置必须属于团队')
         ident = body.get('id')
         if ident is not None and not isinstance(ident,str): raise ValueError('模型连接标识无效')
         if action == 'save': return self.save(body)
         if action == 'test': return self.test(ident)
-        with self.lock:
+        cancelled = []
+        with self.store.transaction() as db, self.lock:
             if ident not in self.data['connections']: raise ValueError('模型连接不存在')
             if action == 'default': self.data['default_id'] = ident
             elif action == 'delete':
                 del self.data['connections'][ident]
                 if self.data['default_id']==ident: self.data['default_id'] = next(iter(self.data['connections']), '')
+                if self.workspace_id:
+                    cancelled = self.fence_uses(db, ident)
+                    db.execute('DELETE FROM project_models WHERE connection_id=?', (ident,))
             else: raise ValueError('未知模型设置操作')
             self.write()
+        for run in cancelled:
+            self.research.cancel(run['id'], run['revision'])
         return self.view()
 
     def preferences(self, conversation, body=None):
-        if not self.store.one('SELECT 1 FROM conversations WHERE id=?',(conversation,)): raise ValueError('对话不存在')
+        chat = self.store.one('SELECT project_id FROM conversations WHERE id=?',(conversation,))
+        if not chat: raise ValueError('对话不存在')
         row = self.store.one('SELECT body FROM conversation_preferences WHERE conversation_id=?',(conversation,))
         options = json.loads(row['body']) if row else {'connection_id':None,'effort':'auto','style':'balanced','language':'auto'}
         if body is not None:
@@ -182,30 +359,36 @@ class ModelSettings:
             if any(not isinstance(options.get(key),str) for key in ('style','language','effort')) or options['style'] not in STYLE or options['language'] not in LANGUAGE or options['effort'] not in ('auto','off','low','medium','high'):
                 raise ValueError('对话偏好选项无效')
             if options['connection_id'] is not None and not isinstance(options['connection_id'],str): raise ValueError('模型连接标识无效')
-            config = self.selected(options['connection_id'])
+            config = self.selected(options['connection_id'], project=chat['project_id'])
             if options['effort']!='auto' and options['effort'] not in config.get('efforts',[]): raise ValueError('模型未通过该思考强度测试，请重新选择')
             self.store.run('INSERT OR REPLACE INTO conversation_preferences VALUES(?,?)',(conversation,json_text(options)))
         return options
 
-    def snapshot(self, options):
-        config = self.selected(options.get('connection_id'))
+    def snapshot(self, options, project=None):
+        if self.online and not self.workspace_id:
+            return self.for_project(project).snapshot(options, project)
+        config = self.selected(options.get('connection_id'), project=project)
         if options.get('effort','auto') not in ['auto',*config.get('efforts',[])]: raise ValueError('模型不支持所选思考强度')
         version = hashlib.sha256(json_text(config).encode()).hexdigest()
         with self.lock:
             if version not in self.data['versions']:
                 self.data['versions'][version] = config
                 self.write()
-        return {'version':version, 'name':config['name'], 'model':config['model'], 'options':copy.deepcopy(options)}
+        return {'version':version, 'name':config['name'], 'model':config['model'], 'options':copy.deepcopy(options), **({'workspace_id':self.workspace_id, 'connection_id':config['id']} if self.workspace_id else {})}
 
     def for_task(self, task):
+        if self.online and not self.workspace_id:
+            self.store.collaboration.execution(self.store.task(task['id']) or task)
+            return self.for_project(task['project_id']).for_task(task)
         with self.store.transaction():
             row = self.store.task(task['id'])
             bound = (row or task).get('refs',{}).get('model_config')
             if bound is None:
-                bound = self.snapshot({'connection_id':None,'effort':'auto','style':'balanced','language':self.data.get('language','auto')})
+                bound = self.snapshot({'connection_id':None,'effort':'auto','style':'balanced','language':self.data.get('language','auto')}, project=task['project_id'])
                 if row:
                     self.store.run('UPDATE tasks SET refs=? WHERE id=?',(json_text({**row['refs'],'model_config':bound}),task['id']))
             task.setdefault('refs',{})['model_config'] = bound
+            self.authorize_binding(task, bound)
         with self.lock:
             config = self.data['versions'].get(bound['version'])
             if not config: raise ValueError('此任务绑定的模型配置不可用，请重新发送')
@@ -213,35 +396,46 @@ class ModelSettings:
 
     def redact(self, message):
         with self.lock:
-            keys = {v.get('api_key','') for v in [self.fallback(),*self.data['connections'].values(),*self.data['versions'].values()]}
+            keys = {self.research._key, *(v.get('api_key','') for v in [*self.data['connections'].values(),*self.data['versions'].values()])}
+            children = list(self.workspaces.values())
         for key in keys:
             if key: message = message.replace(key,'[redacted]')
+        for child in children:
+            message = child.redact(message)
         return message
 
     def test(self, ident):
         config = self.selected(ident)
         if not ident: raise ValueError('请先保存要测试的自定义连接')
         opener = build_opener(NoRedirect())
+        streaming = urlsplit(config['base_url']).hostname == 'copilot.tencent.com'
         def request(extra=None, messages=None):
-            body = {'model':config['model'],'messages':messages or [{'role':'user','content':'Reply exactly OK.'}], 'stream':False,
-                    config.get('token_field','max_tokens'):256, **(extra or {})}
-            req = Request(config['base_url']+'/chat/completions',data=json_text(body).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+config['api_key']},method='POST')
+            body = {'model':config['model'],'messages':messages or [{'role':'user','content':'Reply exactly OK.'}], 'stream':True,
+                    **({'thinking': {'type': 'disabled'}} if config['protocol'] == 'deepseek' else {}),
+                    config.get('token_field','max_tokens'):2048 if streaming else 256, **(extra or {})}
+            call_config, budget_token = self.research.model_gateway.bind(config, workspace=self.workspace_id) if self.online else (config, None)
+            req = Request(call_config['base_url']+'/chat/completions',data=json_text(body).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+call_config['api_key']},method='POST')
             try:
                 with opener.open(req,timeout=20) as response:
-                    result = json.loads(response.read(1000000))
-                return result['choices'][0]['message']
+                    return completion_message(response)
             except HTTPError as error:
+                if budget_token and self.research.model_gateway.routes.get(budget_token, {}).get('error'):
+                    raise self.research.model_gateway.routes[budget_token]['error'] from None
                 raise AppError('authentication' if error.code in (401,403) else http_code(error.code), f'接口返回 HTTP {error.code}：' + error.read(2000).decode('utf-8','replace'), status=error.code) from error
             except Exception as error:
                 raise ValueError('接口未返回有效回答：'+type(error).__name__) from error
+            finally:
+                if budget_token:
+                    self.research.model_gateway.unbind(budget_token)
         checks, efforts = {}, ['off'] if config['protocol']=='deepseek' else []
         for kind in ('chat','tools','vision',*({'openai':['low','medium','high'],'deepseek':['low','high'],'none':[]}[config['reasoning']])):
             try:
                 if kind=='chat':
                     result=request(); assert result.get('content'), '没有回答内容'
                 elif kind=='tools':
-                    result=request({'tools':[{'type':'function','function':{'name':'connection_check','description':'Call this function to verify tools.','parameters':{'type':'object','properties':{'ok':{'type':'boolean'}},'required':['ok']}}}], 'tool_choice':{'type':'function','function':{'name':'connection_check'}}})
-                    assert any(t.get('function',{}).get('name')=='connection_check' for t in result.get('tool_calls',[])), '未返回工具调用'
+                    result=request({'tools':[{'type':'function','function':{'name':'connection_check','description':'Call this function to verify tools.','parameters':{'type':'object','properties':{'ok':{'type':'boolean'}},'required':['ok']}}}], 'tool_choice':'auto', **({'thinking':{'type':'disabled'}} if config['protocol']=='deepseek' else {})}, messages=[{'role':'user','content':'Call connection_check with ok=true to verify the connection.'}])
+                    arguments=[json.loads(t['function']['arguments']) for t in result.get('tool_calls',[]) if t.get('function',{}).get('name')=='connection_check']
+                    assert any(isinstance(a,dict) and a.keys()=={'ok'} and a['ok'] is True for a in arguments), '未返回有效工具调用'
                 elif kind=='vision':
                     import base64
                     import pymupdf
@@ -258,7 +452,11 @@ class ModelSettings:
                     efforts.append(kind)
                 checks[kind]={'ok':True,'message':'请求通过；参数接受不等于模型内部行为证明' if kind in efforts and kind!='off' else '接口验证通过'}
             except Exception as error:
-                checks[kind]={'ok':False,'message':failure_message(self.store, error, operation='connection_test', capability=kind)}
+                blocked = isinstance(error, AppError) and error.code in ('quota', 'configuration')
+                prior = config.get('checks', {}).get(kind, {}).get('ok', False) if blocked else False
+                if prior and kind in config.get('efforts', []) and kind not in efforts:
+                    efforts.append(kind)
+                checks[kind]={'ok':prior,'message':('本次未执行，保留上次能力验证。' if prior else '') + failure_message(self.store, error, operation='connection_test', capability=kind), **({'not_tested':True} if blocked else {})}
         with self.lock:
             if self.data['connections'].get(ident)!=config: raise ValueError('测试期间连接已修改，请重新测试')
             config.update(checks=checks,efforts=efforts,tools=checks.get('tools',{}).get('ok',False),vision=checks.get('vision',{}).get('ok',False),tested_at=now())

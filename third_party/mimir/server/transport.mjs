@@ -1,17 +1,19 @@
-// MethodAtlas adaptation of Mimir's SSH transport; no private-key copying.
+// MethodAtlas adaptation of Mimir's SSH transport.
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
+import { join } from 'node:path'
+const teamCredentials = process.env.METHODATLAS_TEAM_SSH === undefined ? null : JSON.parse(process.env.METHODATLAS_TEAM_SSH)
 const exec = promisify(execFile)
 const runner = await readFile(new URL('./remote-runner.py', import.meta.url), 'utf8')
 const quote = value => "'" + value.replaceAll("'", "'\\''") + "'"
 
 // Opt-in local CPU validation. The existing runner still enforces group isolation.
-export const isLocalTarget = server => server.host === 'methodatlas-local'
-function dockerArgs() {
+export const isLocalTarget = server => teamCredentials === null && server.host === 'methodatlas-local'
+export function dockerArgs() {
   const socket = process.env.METHODATLAS_DOCKER_HOST || ''
-  if (!/^unix:\/\/\//.test(socket) || !process.env.METHODATLAS_LOCAL_CONTAINER) throw new Error('本机实验需要显式配置 Docker Unix socket 和专用容器')
+  if (/[\0\r\n]/.test(socket) || !(/^unix:\/\/\/.+$/.test(socket) || /^npipe:\/\/\/\/\.\/pipe\/[a-zA-Z0-9_.-]+$/.test(socket)) || !process.env.METHODATLAS_LOCAL_CONTAINER) throw new Error('本机实验需要显式配置本地 Docker socket（Unix 或 Windows 命名管道）和专用容器')
   return ['--host', socket]
 }
 
@@ -19,7 +21,22 @@ export function sshArgs(server) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/.test(server.host) ||
       server.username && !/^[a-zA-Z0-9_][a-zA-Z0-9._-]*$/.test(server.username) ||
       server.port != null && (!Number.isInteger(server.port) || server.port < 1 || server.port > 65535)) throw new Error('Invalid SSH target')
-  return ['-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=5',
+  let isolated = []
+  if (teamCredentials !== null) {
+    const credential = Object.hasOwn(teamCredentials, server.id) && teamCredentials[server.id]
+    const folder = credential?.folder
+    if (typeof folder !== 'string' || !server.username || !server.port ||
+        ['host', 'port', 'username'].some(field => credential.target?.[field] !== server[field])) throw new Error('Team SSH credentials are required for this target')
+    const knownHosts = join(folder, 'known_hosts').replaceAll('\\', '/')
+    if (/["\r\n\0]/.test(knownHosts)) throw new Error('Invalid credential path')
+    isolated = ['-F', 'none', '-i', join(folder, 'identity'),
+      '-o', `UserKnownHostsFile="${knownHosts}"`, '-o', 'GlobalKnownHostsFile=none',
+      '-o', 'IdentityAgent=none', '-o', 'IdentitiesOnly=yes', '-o', 'AddKeysToAgent=no',
+      '-o', 'PasswordAuthentication=no', '-o', 'KbdInteractiveAuthentication=no',
+      '-o', 'ForwardAgent=no', '-o', 'ProxyCommand=none', '-o', 'ProxyJump=none',
+      '-o', 'ControlMaster=no', '-o', 'ControlPath=none', '-o', 'UpdateHostKeys=no']
+  }
+  return [...isolated, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=5',
     '-o', 'ClearAllForwardings=yes', '-o', 'PermitLocalCommand=no', '-o', 'RequestTTY=no',
     ...(server.port == null ? [] : ['-p', String(server.port)]), ...(server.username ? ['-l', server.username] : []), '--', server.host]
 }
@@ -36,7 +53,7 @@ export async function probeTarget(server) {
   const { stdout } = await exec('ssh', ['-G', ...sshArgs(server)], {timeout: 8000, maxBuffer: 128 * 1024})
   const fields = Object.fromEntries(stdout.split('\n').map(line => { const i = line.indexOf(' '); return [line.slice(0, i), line.slice(i + 1).trim()] }))
   return {host: fields.hostname, port: Number(fields.port), username: fields.user,
-    configDigest: createHash('sha256').update(stdout).digest('hex')}
+    configDigest: createHash('sha256').update(JSON.stringify([stdout, sshArgs(server)])).digest('hex')}
 }
 
 export async function remoteCall(server, request) {

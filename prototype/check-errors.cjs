@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {spawn, spawnSync} = require('node:child_process');
 const {chromium} = require('playwright');
+const stopServer = require('./check-server.cjs');
 
 (async () => {
   const root = path.resolve(__dirname,'..'), data = fs.mkdtempSync(path.join(os.tmpdir(),'methodatlas-errors-'));
@@ -81,7 +82,7 @@ with patch.object(Service, 'schedule'):
     assert.deepEqual(errors,[]);
     console.log('PASS: safe errors, terminal explanations, fresh request, 3 failed polls recover without replay or draft loss');
   } finally {
-    await browser?.close();server.kill('SIGINT');
+    await browser?.close();stopServer(server);
     await new Promise(resolve=>server.exitCode!==null?resolve():server.once('exit',resolve));
     fs.rmSync(data,{recursive:true,force:true});
   }

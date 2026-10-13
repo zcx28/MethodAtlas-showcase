@@ -1,7 +1,7 @@
 /**
  * Mimir server adaptation: server CRUD/probes and durable remote job submission.
  * The remote supervisor owns execution; this bridge only submits and observes.
- * Pinned upstream source and MIT attribution are documented in ../../README.md and ../../LICENSE.
+ * Original source and MIT attribution remain in ../server.original.ts.txt and ../../README.md.
  */
 
 import { execFile } from 'node:child_process'

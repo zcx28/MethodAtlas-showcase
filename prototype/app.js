@@ -1,4 +1,8 @@
 const paths = {
+  home:'M3 10 12 3l9 7 M5 9v12h5v-7h4v7h5V9',
+  sidebarLeft:'M6 4h12a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z M9 4v16',
+  sidebarRight:'M6 4h12a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z M15 4v16 M18 9v6',
+  settings:'M21 12l-4.5 7.8h-9L3 12l4.5-7.8h9z M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7',
   share:'M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.6 10.5l6.8-4 M8.6 13.5l6.8 4',
   grid:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
   list:'M7 5h14 M7 12h14 M7 19h14 M3 5h.01 M3 12h.01 M3 19h.01',
@@ -20,17 +24,71 @@ const paths = {
   expand:'M15 3h6v6 M9 21H3v-6 M21 3l-7 7 M3 21l7-7',
   compress:'M4 14h6v6 M14 4v6h6 M14 10l7-7 M3 21l7-7',
   copy:'M9 9h12v12H9z M15 9V3H3v12h6',
-  minus:'M5 12h14'
+  minus:'M5 12h14', sort:'M4 6h16 M4 12h10 M4 18h4',
+  label:'M12 3h7l3 7-10 11L3 12z M17 7h.01',
+  globe:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M3 12h18 M12 3c5 5 5 13 0 18-5-5-5-13 0-18',
+  pin:'M9 3h6 M10 3v6l-3 4v2h10v-2l-3-4V3 M12 15v6',
+  brain:'M12 18V5a3 3 0 0 0-5.8-1A4 4 0 0 0 3 10a4 4 0 0 0 1 7.5A4 4 0 0 0 12 18a4 4 0 0 0 8-.5 4 4 0 0 0 1-7.5 4 4 0 0 0-3.2-6A3 3 0 0 0 12 5 M7 8c0 2 1 3 3 3 M17 8c0 2-1 3-3 3 M7 16c0-2 1-3 3-3 M17 16c0-2-1-3-3-3',
+  terminal:'M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z m2 4 4 4-4 4 M14 16h3',
+  archive:'M4 3h16v5H4z M5 8v12h14V8 M9 12h6',
+  alert:'M12 8v5 M12 16h.01 M10.3 3.8 2.4 17.5A2 2 0 0 0 4.1 20h15.8a2 2 0 0 0 1.7-2.5L13.7 3.8a2 2 0 0 0-3.4 0',
+  previous:'m15 5-7 7 7 7',
+  translate:'M3 5h12 M9 3v2 M12 5c-1 6-4 9-9 12 M5 9c2 4 5 6 8 8 M14 21l4-10 4 10 M15.5 17h5',
+  highlight:'m9 11 7-8 5 5-8 7z M9 11l-3 6 2 2 5-4 M3 21h7',
+  crop:'M8 3H3v5 M16 3h5v5 M21 16v5h-5 M8 21H3v-5 M8 8h8v8H8z',
+  columns:'M3 4h18v16H3z M9 4v16 M15 4v16',
+  image:'M3 4h18v16H3z M3 16l5-5 4 4 3-3 6 6 M16 8h.01'
 };
 // The stop glyph is a solid rounded square, so it carries its own fill instead of the shared stroke styling.
 const solidIcons = new Set(['stop']);
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name] || paths.file}"${solidIcons.has(name) ? ' fill="currentColor" stroke="none"' : ''}></path></svg>`;
+// Layered shortcut glyphs keep motion local to the research launcher.
+const researchIcon = key => {
+  const glyphs = {
+    'lit-review': '<path d="M14 2H5v20h14V7l-5-5v6h5"/><g class="shortcut-ink"><path d="M8 12h8"/><path d="M8 16h6"/><path d="M8 19h4"/></g>',
+    map: '<path d="M12 3v18M8 21h8"/><g class="shortcut-balance"><path d="m3 7 18-2M5 7l-3 7h6L5 7zm14-2-3 7h6l-3-7zM2 14c0 4 6 4 6 0m8-2c0 4 6 4 6 0"/></g>',
+    evolution: '<path d="m11 8-5 8m7-8 5 8"/><g class="shortcut-nodes"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/></g>',
+    graph: '<path class="shortcut-link" pathLength="24" d="M12 8v5m0 0-7 4m7-4 7 4"/><g class="shortcut-nodes"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/></g>',
+    'experiment-plan': '<path d="M9 2h6M10 2v8L4 20q0 2 2 2h12q2 0 2-2l-6-10V2M7 16h10"/><g class="shortcut-bubbles"><circle cx="10" cy="18" r=".7"/><circle cx="14" cy="19" r=".7"/></g>',
+    'result-to-claim': '<g class="shortcut-bars"><path d="M3 14h4v7H3z"/><path d="M10 9h4v12h-4z"/><path d="M17 3h4v18h-4z"/></g>',
+    skills: '<circle class="shortcut-head" cx="12" cy="6" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2H4z"/><path class="shortcut-spark" d="M20 3v4m-2-2h4"/>'
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${glyphs[key]}</svg>`;
+};
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const uid = () => `browser-${crypto.randomUUID()}`;
+window.MethodAtlasTextInput = (title, label, value = '') => new Promise(resolve => {
+  const dialog = document.createElement('dialog'), heading = uid();
+  dialog.className = 'compact-dialog';
+  dialog.setAttribute('aria-labelledby', heading);
+  dialog.innerHTML = `<form method="dialog"><header class="modal-head"><h2 id="${heading}">${esc(title)}</h2></header><div class="modal-body"><label class="dialog-field">${esc(label)}<input type="text" autofocus></label></div><footer class="modal-foot"><button value="cancel">取消</button><button class="primary" value="save">保存</button></footer></form>`;
+  const input = dialog.querySelector('input');
+  input.value = value;
+  // Enter submits the input, while Escape and Cancel leave the original value untouched.
+  dialog.querySelector('form').addEventListener('submit', event => {
+    event.preventDefault();
+    dialog.close(event.submitter?.value === 'cancel' ? 'cancel' : 'save');
+  });
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); dialog.close('save'); }
+  });
+  dialog.addEventListener('close', () => {
+    const result = dialog.returnValue === 'save' ? input.value : null;
+    dialog.remove(); resolve(result);
+  }, {once:true});
+  document.body.append(dialog); dialog.showModal(); input.select();
+});
 let pollFailures = 0, connectionWarning = '';
 let state = null, current = null, conversation = null, selected = new Set(), artifact = null, detail = null, pollTimer = null, pending = false, viewGeneration = 0, activeTaskId = null;
+// Keep existing offline records intact; authenticated users get a separate namespace.
+window.MethodAtlasStorage = Object.fromEntries(['local','session'].map(kind => {
+  const native = kind === 'local' ? window.localStorage : window.sessionStorage;
+  const key = value => state?.collaboration ? `account:${state.user.id}:${value}` : value;
+  return [kind, {getItem: value => native.getItem(key(value)), setItem: (value, data) => native.setItem(key(value),data), removeItem: value => native.removeItem(key(value))}];
+}));
 let versionId = null, paperRequest = 0, artifactRequest = 0, liveTask = null;
 const autoLocatedTasks = new Set();
+const draftEdits = new Map();
 let historyOpen = false;
 const viewPanels = new Map(), middlePanels = new Map();
 // The item each view last opened in the middle, so the left navigation can bring that same item
@@ -44,13 +102,12 @@ const shellViews = [
   {key:'library', label:'文献库', icon:'book'},
   {key:'chat', label:'AI 对话', icon:'spark'},
   {key:'progress', label:'研究日报', icon:'history'},
-  {key:'remote', label:'远程实验', icon:'monitor'},
-  {key:'subscriptions', label:'论文订阅', icon:'list'}
+  {key:'remote', label:'远程实验', icon:'monitor'}
 ];
 let shellView = 'chat';
 let personalSkills = [];
-let projectView = localStorage.getItem('project-view') === 'list' ? 'list' : 'grid';
-let projectSort = localStorage.getItem('project-sort') === 'name' ? 'name' : 'recent';
+let projectView = (globalThis.MethodAtlasStorage?.local || localStorage).getItem('project-view') === 'list' ? 'list' : 'grid';
+let projectSort = (globalThis.MethodAtlasStorage?.local || localStorage).getItem('project-sort') === 'name' ? 'name' : 'recent';
 let lastProjectView = projectView;
 let messageQueue = [], queueDispatch = false, queueEditing = null, queueDragId = null, queueDropTarget = null;
 let lastStarted = null;
@@ -98,9 +155,9 @@ const finished = status => ['succeeded','failed','interrupted','stopped','waitin
 const fileUrl = (a, v) => `/api/projects/${current.id}/artifacts/${a}/versions/${v}/download`;
 const disclosureState = new Map();
 const shortTitle = title => String(title || '原文').replace(/^\d+_/, '').replaceAll('_', ' ');
-function citationLink(c, className = 'evidence-link') {
+function citationLink(c, className = 'evidence-link', number = null) {
   const location = c.rect === null ? '文字材料' : `第 ${c.page} 页`;
-  return `<button class="${className}" title="${esc(c.title)} · ${location}" ${c.id ? `data-action="citation" data-id="${esc(c.id)}"` : `data-action="legacy-citation" data-id="${esc(c.paper_id)}" data-version="${esc(c.paper_version_id)}" data-page="${Number(c.page)}" data-quote="${esc(c.quote)}"`}><span class="citation-title">${esc(shortTitle(c.title))}</span><span class="citation-location"> · ${location} ↗</span></button>`;
+  return `<button class="${className}${number === null ? '' : ' citation-number'}" ${number === null ? '' : `aria-label="引用 ${number}：${esc(c.title)}"`} title="${esc(c.title)} · ${location}" ${c.id ? `data-action="citation" aria-haspopup="dialog" data-id="${esc(c.id)}"` : `data-action="legacy-citation" data-id="${esc(c.paper_id)}" data-version="${esc(c.paper_version_id)}" data-page="${Number(c.page)}" data-quote="${esc(c.quote)}"`}>${number === null ? `<span class="citation-title">${esc(shortTitle(c.title))}</span><span class="citation-location"> · ${location} ↗</span>` : number}</button>`;
 }
 const citationButton = c => citationLink(c);
 const disclosure = (key, defaultOpen = false) => `data-disclosure="${esc(key)}" ${(disclosureState.get(key) ?? defaultOpen) ? 'open' : ''}`;
@@ -108,73 +165,74 @@ const disclosure = (key, defaultOpen = false) => `data-disclosure="${esc(key)}" 
 function eventText(event) {
   const statuses = {queued:'请求已保存', harness:'正在准备任务', model:'正在处理请求', succeeded:'本轮任务已完成'};
   const names = {read_material:'读取材料', locate:'定位原文', set_scope:'确认材料范围', list_materials:'查看材料目录', read_file:'读取成果', write_file:'保存文件', list_files:'查看已有成果', research_paper:'分篇研究', verify_claims:'核对结论', search_papers:'论文调研', read_figure:'读取原图', list_figures:'查找图表', save_context:'保存研究交接', read_evidence:'回读依据', read_history:'回看对话', revise_paper_card:'修正研究卡', list_paper_cards:'查看研究卡', update_plan:'更新计划'};
-  return statuses[event.status] || event.message.replace(/update_plan|read_material|list_materials|set_scope|list_files|read_file|write_file|locate|research_paper|verify_claims|search_papers|read_figure|list_figures|save_context|read_evidence|read_history|revise_paper_card|list_paper_cards/g, name => names[name]);
+  return statuses[event.status] || String(event.message || '').replace(/update_plan|read_material|list_materials|set_scope|list_files|read_file|write_file|locate|research_paper|verify_claims|search_papers|read_figure|list_figures|save_context|read_evidence|read_history|revise_paper_card|list_paper_cards/g, name => names[name]);
 }
 // One visible line per tool call: pair the 开始/完成 messages instead of replaying every raw event.
 const toolBase = text => String(text).replace(/^(正在|已)/,'').replace(/，未成功$/,'').replace(/ · 第 [^·]*$/,'').trim();
-const toolIcon = text => /调研|搜索|查找图表/.test(text) ? 'search' : /核对|验证|未通过/.test(text) ? 'check' : /范围|目录|研究卡|交接|回看/.test(text) ? 'list' : /保存|成果|文件/.test(text) ? 'output' : /阅读|定位|图/.test(text) ? 'book' : 'file';
+const toolIcon = text => /搜索|检索|论文调研|查找/.test(text) ? 'search' : /保存|写入|归档/.test(text) ? 'archive' : /计划|思考|分析/.test(text) ? 'brain' : /阅读|读取|定位|回读|回看|图/.test(text) ? 'file' : /生成|整理|撰写/.test(text) ? 'edit' : 'terminal';
 function toolActions(events) {
   const actions = [], latest = new Map();
-  for (const event of events) {
+  for (const [index,event] of events.entries()) {
     const text = eventText(event);
-    if (!['tool_start','tool_done','tool_failed'].includes(event.status)) { actions.push({text, state:'note'}); continue; }
-    const key = toolBase(text), runningAction = latest.get(key);
-    if (runningAction && runningAction.state === 'running') {
-      runningAction.state = event.status === 'tool_failed' ? 'failed' : 'done';
-      if (event.status !== 'tool_start') runningAction.text = text;
+    const base = {id:`event:${event.seq ?? index}`,stepId:event.step_id,text};
+    if (event.status === 'search_progress' && /^(正在并行检索论文摘要|论文检索已进行)/.test(text)) {
+      const search = actions.findLast(action => action.state === 'running' && action.stepId === event.step_id && toolIcon(action.text) === 'search');
+      if (search) search.detail = text;
       continue;
     }
-    const action = {key, text, state: event.status === 'tool_failed' ? 'failed' : event.status === 'tool_done' ? 'done' : 'running'};
+    if (['queued','succeeded','failed','interrupted','stopped'].includes(event.status)) latest.clear();
+    if (!['tool_start','tool_done','tool_failed'].includes(event.status)) { actions.push({...base, state:'note'}); continue; }
+    const key = `${event.step_id || ''}:${toolBase(text)}`;
+    let runningAction = latest.get(key);
+    // MCP calls are serialized by ProjectTools.worker_lock. Result labels may change completely
+    // (recommendations, subscriptions, file titles); only pair an unambiguous open call.
+    if (event.status !== 'tool_start' && runningAction?.state !== 'running') {
+      const open = [...latest.values()].filter(action => action.state === 'running' && action.stepId === event.step_id);
+      if (open.length === 1) runningAction = open[0];
+    }
+    if (event.status !== 'tool_start' && runningAction?.state === 'running') {
+      runningAction.state = event.status === 'tool_failed' ? 'failed' : 'done';
+      runningAction.text = text;
+      delete runningAction.detail;
+      continue;
+    }
+    const action = {...base, state: event.status === 'tool_failed' ? 'failed' : event.status === 'tool_done' ? 'done' : 'running'};
     latest.set(key, action); actions.push(action);
   }
   return actions;
 }
-// While a step runs, keep only its most recent tool rows visible: enough to follow along, not enough to flood the log.
-function toolFeed(events) {
-  const items = toolActions(events), shown = items.slice(-4);
-  return `${shown.length < items.length ? `<p class="tool-count">此前 ${items.length - shown.length} 项已完成</p>` : ''}${toolList(shown)}`;
-}
-// Rows that appear for the first time fade in one after another, so a batch of finished tool calls reads
-// as a sequence instead of one block that popped into place. Rows already on screen are left alone.
-const seenToolRows = new Set();
-let enterBatch = 0;
-function toolLine(action) {
-  const [head, target] = String(action.text).split(' · ');
-  const key = `${action.key}|${action.text}`;
-  const fresh = !seenToolRows.has(key);
-  if (fresh) {
-    seenToolRows.add(key);
-    if (seenToolRows.size > 400) seenToolRows.clear();
-  }
-  const attrs = fresh ? ` class="tool-line enter" style="animation-delay:${enterBatch++ * 45}ms"` : ' class="tool-line"';
-  return `<li${attrs} data-state="${action.state}">${icon(toolIcon(action.text))}<span>${esc(head)}${target ? `<b class="tool-target"> · ${esc(target)}</b>` : ''}</span></li>`;
-}
-const toolList = actions => `<ul class="tool-list">${actions.map(toolLine).join('')}</ul>`;
-const eventList = events => toolList(toolActions(events));
 
 function renderProgress(task, running = false) {
-  if (!task) return running ? '<div class="task-wait" role="status">请求已提交…</div>' : '';
-  if (!task.plan?.length && !task.tools?.some(t => !['set_scope','list_materials'].includes(t.name))) return '';
+  if (!task) return running ? `<div class="task-wait" role="status">${icon('brain')}请求已提交…</div>` : '';
   const plan = (task.plan || []).filter(step => step && typeof step.id === 'string' && typeof step.title === 'string');
-  const events = task.events.filter(e => e.status !== 'plan');
-  const completed = plan.filter(step => step.status === 'completed').length;
-  const steps = plan.map(step => {
-    const actions = events.filter(e => e.step_id === step.id);
-    const active = step.status === 'in_progress' && running;
-    const interrupted = step.status === 'in_progress' && !running;
-    const state = active ? 'active' : interrupted ? 'interrupted' : step.status === 'completed' ? 'completed' : 'pending';
-    const stateLabel = active ? '进行中' : interrupted ? (task.status === 'interrupted' ? '已中断' : task.status === 'failed' ? '已停止' : '未确认完成') : step.status === 'completed' ? '已完成' : '待开始';
-    const detail = step.status === 'completed' ? step.summary : active ? (actions.length ? eventText(actions.at(-1)) : '正在进行此步骤…') : interrupted ? stateLabel : '';
-    return `<li class="plan-step" data-state="${state}" ${active ? 'aria-current="step"' : ''}><span class="plan-dot" aria-hidden="true">${step.status === 'completed' ? '✓' : ''}</span><div class="plan-content"><div class="plan-title">${esc(step.title)}<span class="sr-only"> · ${stateLabel}</span></div>${detail ? `<p class="plan-summary ${active ? 'current-action' : ''}" ${active ? 'role="status"' : ''}>${esc(detail)}</p>` : ''}${active && actions.length ? toolFeed(actions) : ''}${actions.length ? `<details class="step-details" ${disclosure(`${task.id}:${step.id}`)}><summary>执行详情 · ${actions.length}</summary>${eventList(actions)}</details>` : ''}</div></li>`;
-  }).join('');
-  const ungrouped = plan.length ? events.filter(e => !plan.some(step => step.id === e.step_id)) : events;
-  const contents = plan.length ? `<ol class="research-plan" aria-label="调研计划">${steps}</ol>${ungrouped.length ? `<details class="other-actions" ${disclosure(`${task.id}:other`)}><summary>其他执行记录</summary>${eventList(ungrouped)}</details>` : ''}` : eventList(events);
+  const events = task.events || [], actions = toolActions(events.filter(e => e.status !== 'plan'));
+  const rows = [], inserted = new Set();
+  const addThought = step => {
+    if (!step || inserted.has(step.id)) return;
+    inserted.add(step.id);
+    rows.push({id:`thought:${step.id}`,kind:'thought',text:step.title,detail:step.summary,
+      state:step.status === 'completed' ? 'done' : step.status === 'in_progress' ? (running ? 'running' : 'interrupted') : 'pending'});
+  };
+  // Old tasks only retain the latest plan: anchor its summary at the first related action,
+  // preserving tool order without inventing timestamps or private reasoning text.
+  for (const action of actions) {
+    addThought(plan.find(step => step.id === action.stepId));
+    if (!['请求已保存','正在准备任务','正在处理请求','本轮任务已完成'].includes(action.text)) rows.push({...action,kind:'tool',state:!running && action.state === 'running' ? 'interrupted' : action.state});
+  }
+  plan.forEach(addThought);
+  if (!running && !rows.length) return '';
+  const last = events.at(-1), active = plan.find(step => step.status === 'in_progress');
+  const currentText = last && ['tool_start','connection_retry','tool_failed'].includes(last.status) ? eventText(last) : active?.title || '正在处理请求';
+  const statusText = running ? currentText : ({failed:'执行未完成',interrupted:'执行已中断',stopped:'执行已停止',waiting:'等待你的回复'}[task.status] || '思考过程');
+  const statusIcon = running ? (last?.status === 'tool_start' ? toolIcon(currentText) : last?.status === 'tool_failed' ? 'alert' : 'brain') : ['failed','interrupted'].includes(task.status) ? 'alert' : 'brain';
+  const labels = {running:'进行中',done:'已完成',failed:'未成功',interrupted:'未完成',pending:'待开始',note:'记录'};
+  const contents = `<ol class="process-timeline" aria-label="思考与执行记录">${rows.map(row => `<li class="process-row" data-process-row="${esc(`${task.id}:${row.id}`)}" data-kind="${row.kind}" data-state="${row.state}">${icon(row.state === 'failed' ? 'alert' : row.kind === 'thought' ? 'brain' : toolIcon(row.text))}<div class="process-copy"><div class="process-title"><span class="sr-only">${row.kind === 'thought' ? '思考摘要' : '执行'} · </span>${esc(row.text)}${['pending','interrupted','failed'].includes(row.state) ? `<span class="process-state">${labels[row.state]}</span>` : `<span class="sr-only"> · ${labels[row.state]}</span>`}</div>${row.detail ? `<p class="process-detail">${esc(row.detail)}</p>` : ''}</div></li>`).join('')}</ol>`;
   const usage = task.refs?.usage || [];
   const sum = key => usage.reduce((n, u) => n + (u[key] || 0), 0);
   const tokenInfo = usage.length ? `<p class="tool-count">模型调用 ${sum('calls')} 次 · 非缓存输入 ${sum('inputTokens').toLocaleString()} · 缓存输入 ${sum('cacheReadTokens').toLocaleString()} · 输出 ${sum('outputTokens').toLocaleString()}（其中推理 ${sum('reasoningTokens').toLocaleString()}） · 压缩 ${usage.filter(u => u.role === 'compaction').reduce((n,u) => n + (u.calls || 0), 0)} 次</p>` : '';
-  return `<details class="execution-record" ${disclosure(`${task.id}:progress`, running && plan.length > 0)}><summary>思考过程${plan.length ? ` · ${completed}/${plan.length} 步` : ''}</summary>${contents}${tokenInfo}</details>${running && !plan.length ? `<div class="task-wait" role="status">${esc(events.length ? eventText(events.at(-1)) : '正在处理请求…')}</div>` : ''}`;
+  return `<details class="execution-record" data-running="${running}" ${disclosure(`${task.id}:progress`)}><summary><span class="process-indicator" data-motion="${running ? statusIcon : 'idle'}">${icon(statusIcon)}</span><span class="process-current" ${running ? 'role="status"' : ''}>${esc(statusText)}</span><span class="process-chevron">${icon('chevron')}</span></summary>${contents}${tokenInfo}</details>`;
 }
-function saveSelection() { localStorage.setItem(`focus:${current.id}`, JSON.stringify([...selected])); }
+function saveSelection() { (globalThis.MethodAtlasStorage?.local || localStorage).setItem(`focus:${current.id}`, JSON.stringify([...selected])); }
 
 // Only display server-mapped errors. This guard also covers stale backends and browser exceptions.
 function errorMessage(message) {
@@ -196,6 +254,7 @@ async function api(path, options = {}) {
   try { data = await response.json(); }
   catch (cause) { throw Object.assign(new Error('未能读取服务响应，请稍后重试。', {cause}), {code:'invalid_response', retryable:true}); }
   if (!response.ok) {
+    if (response.status === 401 && !path.startsWith('/api/auth/')) window.MethodAtlasCollaboration?.expired();
     const info = data.error_info;
     throw Object.assign(new Error(errorMessage(data.explanation || (info ? `${info.message} ${info.next_step}` : data.error))), {code:info?.code, retryable:info?.retryable ?? response.status >= 500, status:response.status});
   }
@@ -210,9 +269,11 @@ function toast(message) {
   clearTimeout(toast.timer); toast.timer = setTimeout(() => { node.classList.remove('show'); }, 4200);
 }
 
-function projectIcon(index) { return ['book', 'method', 'evolution', 'bulb'][index % 4]; }
 
 function invalidateView() {
+  hideTextSelection();
+  closeSelectionTranslate();
+  document.getElementById('source-menu')?.hidePopover();
   document.getElementById('skill-workbench')?.hidePopover();
   clearTimeout(pollTimer); pollTimer = null; pollFailures = 0; connectionWarning = ''; viewGeneration += 1; activeTaskId = null; pending = false; liveTask = null; autoLocatedTasks.clear(); historyOpen = false; paperRequest++; artifactRequest++;
 }
@@ -221,31 +282,34 @@ function isCurrentView(generation, projectId, conversationId, taskId = null) {
   return generation === viewGeneration && current?.id === projectId && conversation?.id === conversationId && (!taskId || activeTaskId === taskId);
 }
 
+function serverConversationId(){return conversation.local?conversation.context_conversation_id:conversation.id;}
+
 // Project sort keeps a real select for state and keyboard-free tooling, but shows an app-styled menu instead of the native popup.
 const sortLabels = {recent:'最近', name:'名称'};
 const sortControl = () => `<div class="sort-field"><select id="project-sort" class="project-sort" aria-label="项目排序" tabindex="-1">${Object.entries(sortLabels).map(([value,label]) => `<option value="${value}" ${projectSort === value ? 'selected' : ''}>${label}</option>`).join('')}</select><details class="sort-menu"><summary class="sort-display">${sortLabels[projectSort]}${icon('chevron')}</summary><div class="sort-options" role="listbox" aria-label="项目排序">${Object.entries(sortLabels).map(([value,label]) => `<button type="button" role="option" aria-selected="${projectSort === value}" data-sort="${value}">${label}${projectSort === value ? icon('check') : ''}</button>`).join('')}</div></details></div>`;
 
-async function home() {
-  try { await window.MethodAtlasWriting?.flush(); } catch (error) { toast(error.message); return; }
+async function home(revoked = false) {
+  window.MethodAtlasAI?.suspend();
+  if (!revoked) try { await window.MethodAtlasWriting?.flush(); } catch (error) { toast(error.message); return; }
   saveWorkspaceState();
   window.MethodAtlasWriting?.unmount();
-  viewPanels.clear(); middlePanels.clear(); middleItems.clear(); middleRequest++; workspaceProject = null;
+  remoteOutputOpen = false; viewPanels.clear(); middlePanels.clear(); middleItems.clear(); middleRequest++; workspaceProject = null;
   // 返回项目列表同样算离开笔记视图：先把未保存的改动写下去（见 skills.js 的自动保存）。
   window.MethodAtlasSkills?.flushPending?.();
   invalidateView();
   const generation = viewGeneration;
   current = conversation = artifact = detail = null; pending = false;
-  localStorage.removeItem('methodatlas-view');
+  (globalThis.MethodAtlasStorage?.local || localStorage).removeItem('methodatlas-view');
   document.title = 'MethodAtlas · 我的项目';
-  document.getElementById('app').innerHTML = `<main class="home">
-    <header class="app-header"><div class="brand"><span class="brandmark" aria-hidden="true"><img src="assets/methodatlas-mark.png" alt=""></span>MethodAtlas</div><div class="home-header-meta"><button data-action="settings" class="pill">设置</button><details class="home-menu"><summary class="icon" aria-label="应用面板">${icon('dots')}</summary><div><button data-action="new-project">${icon('plus')}新建项目</button><button data-action="view" data-value="grid">${icon('grid')}网格视图</button><button data-action="view" data-value="list">${icon('list')}列表视图</button></div></details><span class="avatar" aria-label="本机用户">M</span></div></header>
-    <div class="home-content"><div class="toolbar"><div class="toolbar-left"><label class="search-field">${icon('search')}<input id="project-search" placeholder="搜索项目" aria-label="搜索项目"></label></div>
+  document.getElementById('app').innerHTML = `<main class="home"><nav class="shell-nav home-nav" aria-label="应用导航">${globalNav(true)}<button data-action="new-project" aria-label="新建项目" title="新建项目">${icon('plus')}</button><div class="shell-nav-bottom"><button data-action="settings" aria-label="设置" title="设置">${icon('settings')}</button></div></nav>
+    <header class="app-header"><div class="brand"><span class="brandmark" aria-hidden="true"><img src="assets/methodatlas-mark.png?v=poster-20261013" alt=""></span><span class="brand-name">MethodAtlas</span></div><div class="home-header-meta">${window.MethodAtlasCollaboration?.header() || '<span class="avatar" aria-label="本机用户">M</span>'}</div></header>
+    <div class="home-content"><div class="toolbar"><div class="toolbar-left">${window.MethodAtlasSearch?.compact('project') || ''}</div>
       <div class="toolbar-right"><div class="view-toggle" role="group" aria-label="项目视图" data-view="${projectView}"><span class="view-thumb" aria-hidden="true"></span><button data-action="view" data-value="grid" aria-label="网格视图" aria-pressed="${projectView === 'grid'}">${icon('grid')}</button><button data-action="view" data-value="list" aria-label="列表视图" aria-pressed="${projectView === 'list'}">${icon('list')}</button></div>${sortControl()}<button class="primary" data-action="new-project">${icon('plus')}新建</button></div></div>
       <div class="collection-head"><h1><span id="collection-title">最近打开过的项目</span> <span class="collection-count" id="project-count"></span></h1></div><div class="projects" id="project-grid"></div>
     </div></main>`;
   renderProjects();
   try {
-    const latest = await api('/api/state');
+    const latest = await api('/api/state?summary=1');
     if (generation !== viewGeneration) return;
     state = latest; renderProjects();
   } catch (error) { if (generation === viewGeneration) toast(error.message); }
@@ -267,9 +331,10 @@ function syncSortControl() {
 }
 
 function renderProjects() {
-  const query = document.getElementById('project-search')?.value.trim().toLowerCase() || '';
-  const projects = state.projects.filter(project => project.name.toLowerCase().includes(query));
-  const openedAt = project => Number(localStorage.getItem(`opened:${project.id}`)) || Date.parse(project.created);
+  const query = (window.MethodAtlasSearch?.listQuery('project') || '').trim().toLowerCase();
+  const workspaceId = window.MethodAtlasCollaboration?.selectedWorkspace();
+  const projects = state.projects.filter(project => (!workspaceId || project.workspace_id === workspaceId) && project.name.toLowerCase().includes(query));
+  const openedAt = project => Number((globalThis.MethodAtlasStorage?.local || localStorage).getItem(`opened:${project.id}`)) || Date.parse(project.created);
   projects.sort(projectSort === 'name' ? (a,b) => a.name.localeCompare(b.name,'zh-CN') : (a,b) => openedAt(b) - openedAt(a));
   const grid = document.getElementById('project-grid');
   grid.classList.toggle('list-view',projectView === 'list');
@@ -286,34 +351,37 @@ function renderProjects() {
   document.getElementById('collection-title').textContent = query ? '搜索结果' : '最近打开过的项目';
   syncSortControl();
   document.getElementById('project-count').textContent = query ? `${projects.length} / ${state.projects.length}` : `${projects.length} 个项目`;
-  grid.innerHTML = `<button class="project-card nb-new" data-action="new-project"><span class="plus-circle">${icon('plus')}</span><span>新建项目</span></button>` + projects.map((project, index) => `<button class="project-card nb-card" data-action="open-project" data-id="${esc(project.id)}"><span class="nb-card-top"><span class="nb-thumb t-blue">${icon(projectIcon(index))}</span><span class="nb-menu" aria-hidden="true">${icon('dots')}</span></span><span class="nb-card-body"><span class="nb-state">${project.papers.length ? '研究项目' : '等待添加来源'}</span><h2>${esc(project.name)}</h2><small>${esc(new Date(project.updated).toLocaleDateString('zh-CN').replaceAll('/','.'))} 更新 · ${project.papers.length} 个来源</small></span></button>`).join('') + (projects.length ? '' : `<p class="no-project" role="status">${query ? '没有找到匹配的项目。' : '点击「新建」开始第一个研究主题。'}</p>`);
+  grid.innerHTML = projects.map(project => `<button class="project-card nb-card" data-action="open-project" data-id="${esc(project.id)}"><span class="nb-card-top"><span class="nb-thumb">${icon('book')}</span></span><span class="nb-card-body"><h2>${esc(project.name)}</h2><small>${esc(new Date(project.updated).toLocaleDateString('zh-CN').replaceAll('/','.'))} 更新 · ${(project.paper_count ?? project.papers?.length ?? 0)} 个来源</small></span></button>`).join('') + `<button class="project-card nb-new" data-action="new-project"><span class="plus-circle">${icon('plus')}</span><span>新建项目</span></button>` + (projects.length ? '' : `<p class="no-project" role="status">${query ? '没有找到匹配的项目。' : '点击「新建」开始第一个研究主题。'}</p>`);
 }
 
 async function openProject(id, conversationId = null) {
   const sameProject = current?.id === id && Boolean(document.querySelector('.workspace'));
+  if(sameProject && conversationId && window.MethodAtlasAI?.isOpen())return window.MethodAtlasAI.select(conversationId).catch(error=>toast(error.message));
   if (!sameProject) {
+    window.MethodAtlasAI?.suspend();
     try { await window.MethodAtlasWriting?.flush(); } catch (error) { toast(error.message); return; }
     saveWorkspaceState();
   }
   invalidateView();
   const generation = viewGeneration, projectId = id;
   try {
-    const loaded = await api(`/api/projects/${encodeURIComponent(projectId)}`);
+    const loaded = await api(`/api/projects/${encodeURIComponent(projectId)}?compact=1${conversationId ? '&conversation='+encodeURIComponent(conversationId) : ''}`);
     personalSkills = await api('/api/skills');
     if (generation !== viewGeneration) return;
     current = loaded;
+    window.MethodAtlasSettings?.reload();
     conversation = current.conversations.find(c => c.id === conversationId) || current.conversations[0] || null;
     if (!conversation) conversation = await newConversation(true);
     if (generation !== viewGeneration || current?.id !== projectId || !conversation) return;
     conversation.messages.map(m => m.task).filter(t => t?.tools.some(tool => tool.name === 'locate' && tool.status === 'succeeded')).forEach(t => autoLocatedTasks.add(t.id));
-    const saved = JSON.parse(localStorage.getItem(`focus:${id}`) || 'null');
+    const saved = JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(`focus:${id}`) || 'null');
     selected = new Set((saved || current.papers.filter(p => p.selected && p.current_version_id).map(p => p.id)).filter(pid => current.papers.some(p => p.id === pid && p.current_version_id)));
     let workspace = null;
     if (!sameProject) {
-      try { workspace = JSON.parse(localStorage.getItem(`workspace:${id}`) || 'null'); } catch {}
+      try { workspace = JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(`workspace:${id}`) || 'null'); } catch {}
       artifact = detail = null; versionId = null; shellView = 'chat';
     }
-    localStorage.setItem(`opened:${id}`,String(Date.now()));
+    (globalThis.MethodAtlasStorage?.local || localStorage).setItem(`opened:${id}`,String(Date.now()));
     document.title = `MethodAtlas · ${current.name}`; renderWorkspace();
     if (workspace) {
       if (workspace.view !== 'chat') switchShellView(workspace.view);
@@ -321,8 +389,9 @@ async function openProject(id, conversationId = null) {
       if (workspace.artifact && current.artifacts.some(item => item.id === workspace.artifact)) await loadArtifact(workspace.artifact,workspace.version,false);
       if (workspace.view === 'library' && workspace.paper && current.papers.some(item => item.id === workspace.paper)) await showPaper(workspace.paper,workspace.page || 1,workspace.paperVersion);
     }
+    await window.MethodAtlasAI?.restore();
     const running = projectRunningTask();
-    if (running || current.papers.some(p => p.availability?.fulltext === 'pending')) { activeTaskId = running?.id; refreshTask(running?.id, generation, projectId, conversation.id).catch(e => toast(e.message)); }
+    if (state?.collaboration || running || current.papers.some(p => p.availability?.fulltext === 'pending')) { activeTaskId = running?.id; refreshTask(running?.id, generation, projectId, conversation.id).catch(e => toast(e.message)); }
   } catch (error) {
     if (generation !== viewGeneration) return;
     if (current?.id === projectId && conversation) renderWorkspace();
@@ -331,32 +400,52 @@ async function openProject(id, conversationId = null) {
   }
 }
 
-async function newConversation(silent = false) {
+const conversationRequests = new Map();
+async function newConversation(silent = false, visibility = 'shared') {
   if (!current?.id) return null;
   if (!silent) invalidateView();
   const generation = viewGeneration, projectId = current.id;
+  const requestKey = `${projectId}:${visibility}`;
+  const request = conversationRequests.get(requestKey) || api(`/api/projects/${projectId}/conversations`, {method:'POST', body:JSON.stringify({visibility})});
+  conversationRequests.set(requestKey,request);
   try {
-    const result = await api(`/api/projects/${projectId}/conversations`, {method:'POST', body:'{}'});
+    const result = await request;
     if (generation !== viewGeneration || current?.id !== projectId) return null;
-    const created = {id:result.conversation_id, title:'新对话', messages:[], reads:[]};
-    current.conversations.unshift(created);
-    if (!silent) { conversation = created; renderWorkspace(); refreshTask(null,generation,projectId,created.id).catch(error => toast(error.message)); }
+    const created = current.conversations.find(item=>item.id===result.conversation_id) || {id:result.conversation_id, title:'新对话', visibility:result.visibility || 'shared', owner_id:result.owner_id, messages:[], reads:[]};
+    if(!current.conversations.includes(created))current.conversations.unshift(created);
+    if (!silent) {
+      if(window.MethodAtlasAI?.isOpen()){await window.MethodAtlasAI.select(created.id);return created;}
+      conversation = created; renderWorkspace(); refreshTask(null,generation,projectId,created.id).catch(error => toast(error.message));
+    }
     return created;
   } catch (error) {
     if (silent) throw error;
     if (generation === viewGeneration) { renderWorkspace(); toast(error.message); }
     return null;
-  }
+  } finally {if(conversationRequests.get(requestKey)===request)conversationRequests.delete(requestKey);}
 }
 
 // Queued messages: while a task is busy the composer queues instead of interrupting, and the queue self-dispatches when the conversation goes idle.
 const queueKey = () => `queue:${conversation?.id || ''}`;
 function loadQueue() {
-  try { messageQueue = JSON.parse(localStorage.getItem(queueKey()) || '[]'); } catch { messageQueue = []; }
+  try { messageQueue = JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(queueKey()) || '[]'); } catch { messageQueue = []; }
   if (!Array.isArray(messageQueue)) messageQueue = [];
+  messageQueue = messageQueue.filter(item => !conversation.messages.some(message => message.client_message_id === item.id));
+  // An unacknowledged attempt is recovered for explicit retry, never replayed on reload.
+  messageQueue.forEach(item => { if (item.sending && !queueDispatch) {item.sending=false;item.failed=true;} });
+  saveQueue();
   queueEditing = null;
 }
-function saveQueue() { localStorage.setItem(queueKey(),JSON.stringify(messageQueue)); }
+function saveQueue() { (globalThis.MethodAtlasStorage?.local || localStorage).setItem(queueKey(),JSON.stringify(messageQueue)); }
+function updateQueued(conversationId, id, change) {
+  const same = conversation?.id === conversationId;
+  const items = same ? messageQueue : JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(`queue:${conversationId}`) || '[]');
+  const index = items.findIndex(item => item.id === id);
+  if (index < 0) return;
+  if (change === null) items.splice(index, 1); else Object.assign(items[index], change);
+  (globalThis.MethodAtlasStorage?.local || localStorage).setItem(`queue:${conversationId}`, JSON.stringify(items));
+  if (same) renderChat();
+}
 const waitingTask = () => conversation.messages.some(message => message.role === 'user' && message.task?.status === 'waiting');
 // A task awaiting confirmation is still busy: the queue waits for the user just like the agent does.
 const busyTask = () => pending || conversation.messages.some(message => message.role === 'user' && message.task && (!finished(message.task.status) || message.task.status === 'waiting'));
@@ -364,7 +453,7 @@ function queuePanel() {
   if (!conversation || !messageQueue.length) return '';
   const items = messageQueue.map((item, index) => `<li class="queue-item" data-queue="${esc(item.id)}" draggable="true">${queueEditing === item.id
     ? `<span class="queue-handle" aria-hidden="true">${icon('handle')}</span><form class="queue-edit" data-queue-form="${esc(item.id)}"><textarea aria-label="编辑排队消息" rows="2">${esc(item.text)}</textarea><button type="button" data-queue-action="save" aria-label="保存排队消息">${icon('check')}</button><button type="button" data-queue-action="cancel" aria-label="取消编辑">${icon('close')}</button></form>`
-    : `<span class="queue-handle" aria-hidden="true">${icon('handle')}</span><span class="queue-text">${esc(item.text)}${item.fragments?.length ? `<small>${item.fragments.length} 个已选文本片段</small>` : ''}</span><span class="queue-actions">${item.failed?'<button type="button" data-queue-action="retry">重试</button>':''}<button type="button" data-queue-action="up" aria-label="上移排队消息" title="上移" ${index ? '' : 'disabled'}>${icon('arrow')}</button><button type="button" data-queue-action="edit" aria-label="编辑排队消息" title="编辑">${icon('edit')}</button><button type="button" data-queue-action="drop" aria-label="删除排队消息" title="删除">${icon('trash')}</button></span>`}</li>`).join('');
+    : `<span class="queue-handle" aria-hidden="true">${icon('handle')}</span><span class="queue-text">${esc(item.text)}${item.fragments?.length ? `<small>${item.fragments.length} 个已选文本片段</small>` : ''}</span><span class="queue-actions">${item.sending?'<small>发送中…</small>':item.failed?'<button type="button" data-queue-action="retry">重试</button>':''}<button type="button" data-queue-action="up" aria-label="上移排队消息" title="上移" ${index ? '' : 'disabled'}>${icon('arrow')}</button><button type="button" data-queue-action="edit" aria-label="编辑排队消息" title="编辑">${icon('edit')}</button><button type="button" data-queue-action="drop" aria-label="删除排队消息" title="删除">${icon('trash')}</button></span>`}</li>`).join('');
   return `<section class="queue-panel" aria-label="排队中的消息"><div class="queue-head"><span>排队中 · ${messageQueue.length}</span><small>${waitingTask() ? '当前任务等待确认，确认后自动发送' : busyTask() ? '当前任务结束后自动发送' : '正在按顺序发送…'}</small></div><ol class="queue-list">${items}</ol></section>`;
 }
 function enqueue(text) {
@@ -375,27 +464,28 @@ function enqueue(text) {
   saveSelectedFragments([]);
   const input = document.getElementById('chat-input');
   if (input) input.value = '';
-  localStorage.removeItem(`draft:${conversation.id}`);
+  (globalThis.MethodAtlasStorage?.local || localStorage).removeItem(`draft:${conversation.id}`);
   renderChat(true);
   toast('已加入排队，当前任务结束后自动发送。');
 }
 async function pumpQueue() {
   if (queueDispatch || !messageQueue.length || messageQueue[0].failed || !conversation || busyTask()) return;
   queueDispatch = true;
+  const next = messageQueue[0], conversationId = conversation.id;
   try {
-    const next = messageQueue.shift();
-    saveQueue();
-    renderChat();
-    const conversationId=conversation.id;
-    const sent=await dispatchMessage(next.text, next.fragments || [], true, next.settings);
-    if(sent===false){
-      next.failed=true;
-      if(conversation?.id===conversationId){messageQueue.unshift(next);saveQueue();renderChat();}
-      else {const queue=JSON.parse(localStorage.getItem(`queue:${conversationId}`)||'[]');queue.unshift(next);localStorage.setItem(`queue:${conversationId}`,JSON.stringify(queue));}
-    }
+    updateQueued(conversationId, next.id, {sending:true,failed:true});
+    const sent=await dispatchMessage(next.text, next.fragments || [], true, next.settings, next);
+    updateQueued(conversationId, next.id, sent===true ? null : {sending:false,failed:true});
+  } catch(error) {
+    updateQueued(conversationId, next.id, {sending:false,failed:true});
+    toast(error.message);
   } finally { queueDispatch = false; }
+  if (conversation?.id === conversationId) pumpQueue();
 }
 
+function globalNav(homePage = false) {
+  return `<button data-action="home" aria-label="项目首页" title="项目首页"${homePage ? ' class="active" aria-current="page"' : ''}>${icon('home')}</button>`;
+}
 function shellNav() {
   return shellViews.map(view => `<button type="button" data-action="shell" data-value="${view.key}" aria-label="${view.label}" title="${view.label}"${view.key === shellView ? ' class="active" aria-current="page"' : ''}>${icon(view.icon)}<span>${view.label}</span></button>`).join('');
 }
@@ -414,10 +504,13 @@ function moveIndicator(host, target, vertical = false) {
   if (indicator.style.transform === next) return;
   const previous = indicator.getBoundingClientRect();
   const wasReady = indicator.dataset.ready === 'true';
+  const extent = String(vertical ? hostRect.height : hostRect.width);
+  const resized = indicator.dataset.extent !== extent;
   indicator.getAnimations().forEach(animation => animation.cancel());
   indicator.style.transform = next;
   indicator.dataset.ready = 'true';
-  if (!wasReady || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  indicator.dataset.extent = extent;
+  if (!wasReady || resized || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const from = vertical ? previous.top - hostRect.top + host.scrollTop : previous.left - hostRect.left;
   const fromSpan = vertical ? previous.height : previous.width;
   const frames = [{transform:transform(from, fromSpan)}];
@@ -496,8 +589,24 @@ function syncSelectMenu(select) {
   if (value) value.textContent = select.selectedOptions[0]?.textContent?.trim() ?? '';
   if (list) list.innerHTML = select.id === 'version-select'
     ? versionListHTML(select.value)
-    : [...select.options].map(option => `<button type="button" data-select-option="${esc(option.value)}" aria-selected="${option.selected}">${esc(option.textContent.trim())}</button>`).join('');
+    : [...select.options].map(option => `<button type="button" data-select-option="${esc(option.value)}" ${option.disabled ? 'disabled' : ''} aria-selected="${option.selected}">${esc(option.textContent.trim())}</button>`).join('');
+  if (list && ['weekly_day','monthly_day'].includes(select.name)) {
+    list.classList.add('recurring-picker');
+    list.classList.toggle('recurring-week',select.name === 'weekly_day');
+    list.insertAdjacentHTML('afterbegin',`<strong class="recurring-heading">${select.name === 'weekly_day' ? '每周' : '每月'}</strong>`);
+  }
 }
+
+function positionSelectMenu(menu) {
+  const list = menu.querySelector('.select-options'), rect = menu.querySelector('summary').getBoundingClientRect();
+  const below = innerHeight - rect.bottom - 12, above = rect.top - 12;
+  const upwards = below < Math.min(list.scrollHeight, 280) && above > below;
+  Object.assign(list.style, {minWidth:rect.width+'px', maxHeight:Math.max(0,Math.min(280,upwards ? above : below))+'px'});
+  const size = list.getBoundingClientRect();
+  list.style.left = Math.max(8,Math.min(rect.left,innerWidth-size.width-8))+'px';
+  list.style.top = (upwards ? rect.top-size.height-4 : rect.bottom+4)+'px';
+}
+window.addEventListener('resize', () => document.querySelectorAll('.select-menu[open]').forEach(positionSelectMenu));
 
 function enhanceSelects(root) {
   const scope = root || document;
@@ -507,24 +616,46 @@ function enhanceSelects(root) {
   for (const select of found) {
     if (select.closest('.sort-field')) continue; // The project sort control already carries its own menu.
     select.dataset.enhanced = '1';
+    select.tabIndex = -1;
+    select.setAttribute('aria-hidden','true');
     const box = document.createElement('span');
     box.className = 'select-box';
     select.before(box);
     box.append(select);
     const menu = document.createElement('details');
     menu.className = 'select-menu';
-    menu.innerHTML = `<summary class="select-display"><span class="select-value"></span>${icon('chevron')}</summary><div class="select-options"></div>`;
+    menu.innerHTML = `<summary class="select-display"><span class="select-value"></span>${icon('chevron')}</summary><div class="select-options" popover="auto"></div>`;
     box.append(menu);
+    const trigger = menu.querySelector('summary');
+    trigger.setAttribute('aria-label',select.getAttribute('aria-label') || select.closest('label')?.textContent.trim() || '选择选项');
+    trigger.setAttribute('aria-disabled',String(select.disabled));
+    if (select.disabled) trigger.tabIndex = -1;
     syncSelectMenu(select);
     select.addEventListener('change', () => syncSelectMenu(select));
+    const list = menu.querySelector('.select-options');
+    menu.addEventListener('keydown',event => {
+      if (event.key !== 'Escape' || !menu.open) return;
+      event.preventDefault(); event.stopPropagation();
+      menu.open = false; list.hidePopover(); trigger.focus({preventScroll:true});
+    });
+    list.addEventListener('beforetoggle', event => { if (event.newState === 'closed') menu.open = false; });
     menu.addEventListener('toggle', () => {
+      if (!menu.open) { list.hidePopover(); return; }
       syncSelectMenu(select);
-      if (menu.open) menu.querySelector('[aria-selected=true]')?.scrollIntoView({block:'nearest'});
+      list.showPopover();
+      requestAnimationFrame(() => {
+        if (!menu.open) return;
+        positionSelectMenu(menu);
+        const selected = list.querySelector('[aria-selected=true]');
+        if (selected) list.scrollTop = selected.offsetTop;
+      });
     });
     menu.addEventListener('click', event => {
+      if (select.disabled) { event.preventDefault(); return; }
       const option = event.target.closest('[data-select-option]');
-      if (!option) return;
+      if (!option || option.disabled) return;
       menu.open = false;
+      trigger.focus({preventScroll:true});
       if (select.value === option.dataset.selectOption) return;
       select.value = option.dataset.selectOption;
       select.dispatchEvent(new Event('change', {bubbles:true}));
@@ -532,25 +663,205 @@ function enhanceSelects(root) {
   }
 }
 
+// Preserve native values, constraints and form submission; the visible picker uses the diary's UI.
+const temporalSelector = 'input:is([type=date],[type=time],[type=datetime-local],[type=month]):not([data-temporal])';
+let temporalId = 0;
+const temporalFields = new Set();
+window.addEventListener('resize',() => temporalFields.forEach(field => field.position()));
+window.addEventListener('scroll',event => temporalFields.forEach(field => field.scroll(event)),true);
+const temporalPad = value => String(value).padStart(2,'0');
+function temporalDate(date) {
+  return `${String(date.getFullYear()).padStart(4,'0')}-${temporalPad(date.getMonth()+1)}-${temporalPad(date.getDate())}`;
+}
+function temporalLocal(value) {
+  const [year,month,day] = value.slice(0,10).split('-').map(Number);
+  const date = new Date(0);
+  date.setFullYear(year,month-1,day || 1);
+  date.setHours(12,0,0,0);
+  return date;
+}
+function enhanceDateTimes(root) {
+  const inputs = root.matches?.(temporalSelector) ? [root] : [...(root.querySelectorAll?.(temporalSelector) || [])];
+  for (const input of inputs) {
+    input.dataset.temporal = '1';
+    input.tabIndex = -1;
+    input.setAttribute('aria-hidden','true');
+    const type = input.type, hasDate = type !== 'time', hasTime = type === 'time' || type === 'datetime-local';
+    const label = input.getAttribute('aria-label') || [...(input.labels || [])].map(l => [...l.childNodes].filter(n => n.nodeType === 3 || !n.matches?.('input,small')).map(n => n.textContent).join('').trim()).join(' ') || '选择时间';
+    const box = document.createElement('span');
+    box.className = `temporal-box temporal-${type}`;
+    input.before(box);
+    box.append(input);
+    box.insertAdjacentHTML('beforeend',`<button type="button" class="temporal-display" aria-label="${esc(label)}" aria-haspopup="dialog" aria-expanded="false" aria-controls="temporal-${++temporalId}" aria-describedby="temporal-value-${temporalId}"><span id="temporal-value-${temporalId}"></span>${icon('chevron')}</button><span class="temporal-panel" id="temporal-${temporalId}" popover="auto" role="dialog" aria-label="${esc(label)}"></span>`);
+    const trigger = box.querySelector('button'), panel = box.querySelector('.temporal-panel');
+    let draft, view, cursor;
+    const valid = value => { const probe = input.cloneNode(); probe.value = value; return probe.validity.valid; };
+    const display = value => {
+      if (!value) return type === 'time' ? '选择时间' : type === 'month' ? '选择月份' : type === 'date' ? '选择日期' : '选择日期和时间';
+      if (type === 'time') return value;
+      const [year,month,day] = value.slice(0,10).split('-');
+      return `${year}年${Number(month)}月${day ? Number(day)+'日' : ''}${hasTime ? ' '+value.slice(11) : ''}`;
+    };
+    const sync = () => {
+      trigger.querySelector('span').textContent = display(input.value);
+      trigger.classList.toggle('is-empty',!input.value);
+      trigger.disabled = input.disabled || input.readOnly;
+      trigger.setAttribute('aria-required',String(input.required));
+      if (trigger.disabled && panel.matches(':popover-open')) panel.hidePopover();
+    };
+    const position = () => {
+      if (!panel.matches(':popover-open')) return;
+      const rect = trigger.getBoundingClientRect();
+      const below = innerHeight-rect.bottom-8, above = rect.top-8;
+      const up = below < Math.min(panel.scrollHeight,440) && above > below;
+      panel.style.maxHeight = Math.max(80,up ? above : below)+'px';
+      const size = panel.getBoundingClientRect();
+      panel.style.left = Math.max(8,Math.min(rect.left,innerWidth-size.width-8))+'px';
+      panel.style.top = Math.max(8,up ? rect.top-size.height-4 : rect.bottom+4)+'px';
+    };
+    const close = () => { panel.hidePopover(); trigger.focus({preventScroll:true}); };
+    const commit = value => {
+      if (!valid(value)) return;
+      input.value = value;
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+      trigger.removeAttribute('aria-invalid');
+      sync(); close();
+    };
+    const datePart = () => draft.slice(0,type === 'month' ? 7 : 10);
+    const timePart = () => type === 'time' ? draft : draft.slice(11);
+    const chooseDate = value => {
+      draft = value + (hasTime ? 'T'+timePart() : '');
+      cursor = temporalLocal(value);
+      if (hasTime) {
+        view = 'hours'; render();
+        (panel.querySelector('[aria-current=true]:not(:disabled)') || panel.querySelector('button:not(:disabled)'))?.focus({preventScroll:true});
+      } else commit(draft);
+    };
+    const button = (text,attrs = '',selected = false,disabled = false) => `<button type="button" ${attrs} ${selected ? 'aria-current="true"' : ''} ${disabled ? 'disabled' : ''}>${text}</button>`;
+    const dayAllowed = value => {
+      if (!hasTime) return valid(value);
+      // A partial first/last day still offers every valid time within that day.
+      return (!input.min || value >= input.min.slice(0,10)) && (!input.max || value <= input.max.slice(0,10));
+    };
+    const render = () => {
+      const year = cursor.getFullYear(), month = cursor.getMonth();
+      let content = '';
+      if (['days','months','years'].includes(view)) {
+        const decade = Math.floor(year/12)*12;
+        const heading = view === 'days' ? `${year}年${month+1}月` : view === 'months' ? `${year}年` : `${decade}–${decade+11}`;
+        content = `<span class="temporal-head">${button(icon('previous'),'data-shift="-1" aria-label="上一'+(view === 'days' ? '月' : view === 'months' ? '年' : '组年份')+'"')}<button type="button" data-view="${view === 'days' ? 'months' : 'years'}" class="temporal-heading">${heading}</button>${button(icon('chevron'),'data-shift="1" aria-label="下一'+(view === 'days' ? '月' : view === 'months' ? '年' : '组年份')+'"')}</span>`;
+        if (view === 'years') content += `<span class="temporal-grid temporal-months">${Array.from({length:12},(_,i)=>button(decade+i+'年',`data-year="${decade+i}"`,decade+i === Number(datePart().slice(0,4)),decade+i<1 || decade+i>9999)).join('')}</span>`;
+        else if (view === 'months') content += `<span class="temporal-grid temporal-months">${Array.from({length:12},(_,i)=>button(i+1+'月',`data-month="${i}"`,`${String(year).padStart(4,'0')}-${temporalPad(i+1)}` === datePart().slice(0,7),type === 'month' && !valid(`${String(year).padStart(4,'0')}-${temporalPad(i+1)}`))).join('')}</span>`;
+        else {
+          const first = temporalLocal(`${year}-${temporalPad(month+1)}-01`), offset = (first.getDay()+6)%7;
+          const next = new Date(first); next.setMonth(month+1,0);
+          content += `<span class="temporal-weekdays" aria-hidden="true">${['一','二','三','四','五','六','日'].map(d=>`<span>${d}</span>`).join('')}</span><span class="temporal-grid temporal-days">${'<span></span>'.repeat(offset)}${Array.from({length:next.getDate()},(_,i)=>{
+            const key = `${String(year).padStart(4,'0')}-${temporalPad(month+1)}-${temporalPad(i+1)}`;
+            return button(i+1,`data-date="${key}" aria-label="${year}年${month+1}月${i+1}日" ${key === temporalDate(new Date()) ? 'data-today' : ''}`,key === datePart(),!dayAllowed(key));
+          }).join('')}</span>`;
+        }
+      } else {
+        const [hour,minute] = timePart().split(':');
+        const isHour = view === 'hours';
+        content = `${hasDate ? `<button type="button" class="temporal-date-back" data-view="days">${display(datePart())}</button>` : ''}<span class="temporal-time-head"><button type="button" data-view="hours" aria-pressed="${isHour}">${hour} 时</button><button type="button" data-view="minutes" aria-pressed="${!isHour}">${minute} 分</button></span><span class="temporal-grid temporal-times">${Array.from({length:isHour ? 24 : 60},(_,i)=>{
+          const time = isHour ? `${temporalPad(i)}:${minute}` : `${hour}:${temporalPad(i)}`;
+          const value = (hasDate ? datePart()+'T' : '')+time;
+          // Hours remain navigable even when the current minute does not satisfy a constraint.
+          const allowed = isHour ? Array.from({length:60},(_,m)=>valid((hasDate ? datePart()+'T' : '')+temporalPad(i)+':'+temporalPad(m))).some(Boolean) : valid(value);
+          return button(temporalPad(i),`data-time="${i}" aria-label="${i}${isHour ? '时' : '分'}"`,i === Number(isHour ? hour : minute),!allowed);
+        }).join('')}</span>`;
+      }
+      const today = type === 'month' ? temporalDate(new Date()).slice(0,7) : temporalDate(new Date());
+      const error = trigger.getAttribute('aria-invalid') === 'true' ? `<span class="temporal-error" role="alert">${esc(input.validationMessage)}</span>` : '';
+      panel.innerHTML = `${content}${error}<span class="temporal-foot">${!input.required ? button('清空','data-clear') : ''}${hasDate && ['days','months','years'].includes(view) ? button(type === 'month' ? '回到本月' : '今天',`data-date="${today}"`,false,!dayAllowed(today)) : ''}${hasTime ? button('确定','data-confirm',false,!valid(draft)) : ''}</span>`;
+      position();
+    };
+    const open = () => {
+      if (trigger.disabled) return;
+      const now = new Date(), defaultDate = temporalDate(now);
+      draft = input.value || (hasDate ? (type === 'month' ? defaultDate.slice(0,7) : defaultDate) : '') + (hasTime ? (hasDate ? 'T' : '')+temporalPad(now.getHours())+':'+temporalPad(now.getMinutes()) : '');
+      cursor = temporalLocal(hasDate ? datePart() : defaultDate);
+      view = type === 'month' ? 'months' : hasDate ? 'days' : 'hours';
+      render(); panel.showPopover(); position();
+      (panel.querySelector('[aria-current=true]:not(:disabled)') || panel.querySelector('button:not(:disabled)'))?.focus({preventScroll:true});
+    };
+    trigger.addEventListener('click',event => { event.preventDefault(); panel.matches(':popover-open') ? close() : open(); });
+    input.addEventListener('click',event => { event.preventDefault(); open(); });
+    panel.addEventListener('beforetoggle',event => trigger.setAttribute('aria-expanded',String(event.newState === 'open')));
+    panel.addEventListener('click',event => {
+      // Rendering a new grid removes the clicked node. Cancel the wrapping label's default
+      // activation so it cannot focus the hidden native field and reopen the system picker.
+      event.preventDefault();
+      const target = event.target.closest('button');
+      if (!target || target.disabled || trigger.disabled) return;
+      if (target.hasAttribute('data-clear')) { commit(''); return; }
+      if (target.hasAttribute('data-confirm')) { commit(draft); return; }
+      if (target.dataset.date) { chooseDate(target.dataset.date); return; }
+      if (target.dataset.view) view = target.dataset.view;
+      else if (target.dataset.shift) {
+        const step = Number(target.dataset.shift);
+        cursor.setDate(1);
+        if (view === 'days') cursor.setMonth(cursor.getMonth()+step);
+        else cursor.setFullYear(yearBound(cursor.getFullYear()+step*(view === 'years' ? 12 : 1)));
+        if (cursor.getFullYear()<1 || cursor.getFullYear()>9999) cursor.setFullYear(yearBound(cursor.getFullYear()));
+      } else if (target.dataset.year) { cursor.setFullYear(Number(target.dataset.year)); view = 'months'; }
+      else if (target.dataset.month !== undefined) {
+        cursor.setDate(1); cursor.setMonth(Number(target.dataset.month));
+        if (type === 'month') { chooseDate(temporalDate(cursor).slice(0,7)); return; }
+        view = 'days';
+      } else if (target.dataset.time !== undefined) {
+        const [hour,minute] = timePart().split(':');
+        draft = (hasDate ? datePart()+'T' : '') + (view === 'hours' ? `${temporalPad(target.dataset.time)}:${minute}` : `${hour}:${temporalPad(target.dataset.time)}`);
+        if (view === 'hours') view = 'minutes';
+      }
+      render();
+      (panel.querySelector('[aria-current=true]:not(:disabled)') || panel.querySelector('button:not(:disabled)'))?.focus({preventScroll:true});
+    });
+    panel.addEventListener('keydown',event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
+      const cells = [...(event.target.closest('.temporal-grid')?.querySelectorAll('button:not(:disabled)') || [])];
+      const index = cells.indexOf(event.target);
+      if (index<0) return;
+      const columns = view === 'days' ? 7 : view === 'hours' || view === 'minutes' ? 6 : 3;
+      const moves = {ArrowLeft:-1,ArrowRight:1,ArrowUp:-columns,ArrowDown:columns,Home:-index,End:cells.length-1-index};
+      if (event.key in moves) { event.preventDefault(); cells[Math.max(0,Math.min(cells.length-1,index+moves[event.key]))].focus(); }
+    });
+    // Browser form validation opens the corresponding visible control, including required fields.
+    input.addEventListener('invalid',event => { event.preventDefault(); trigger.setAttribute('aria-invalid','true'); open(); });
+    input.addEventListener('input',sync); input.addEventListener('change',sync);
+    input.form?.addEventListener('reset',() => setTimeout(sync,0));
+    const observer = new MutationObserver(sync);
+    observer.observe(input,{attributes:true,attributeFilter:['disabled','readonly','required','value','min','max','step']});
+    temporalFields.add({input,position,scroll:event => { if (!panel.contains(event.target)) position(); },dispose:() => observer.disconnect()});
+    panel.addEventListener('toggle',event => { if (event.newState === 'open') panel.querySelector('[aria-current=true]')?.scrollIntoView({block:'nearest'}); });
+    sync();
+  }
+}
+function yearBound(year) { return Math.max(1,Math.min(9999,year)); }
+
 // Rendered markup arrives constantly, so the enhancement follows the DOM instead of every caller.
 new MutationObserver(records => {
-  for (const record of records) for (const node of record.addedNodes) if (node.nodeType === 1) enhanceSelects(node);
+  for (const field of temporalFields) if (!field.input.isConnected) { field.dispose(); temporalFields.delete(field); }
+  for (const record of records) for (const node of record.addedNodes) if (node.nodeType === 1) { enhanceSelects(node); enhanceDateTimes(node); }
 }).observe(document.body, {childList:true, subtree:true});
 enhanceSelects(document.body);
+enhanceDateTimes(document.body);
 // Opening or closing a paper repaints whichever view owns the reader column.
-function renderPaperViews() { if (shellView === 'library') renderLibrary(); }
+function renderPaperViews() { if (shellView === 'library') { renderLibrary(); followMiddle('library'); } }
 
 function renderLibrary() {
   window.dispatchEvent(new Event('methodatlas-papers-changed'));
   const panel = document.getElementById('sources-panel');
   shellPaint({titles:['文献库'],bodies:[sourcesBodyHTML()]});
-  let reader = document.getElementById('paper-detail');
-  if (!reader) { reader = Object.assign(document.createElement('div'),{id:'paper-detail'}); panel.append(reader); }
-  document.getElementById('source-body').hidden = Boolean(detail?.paper);
-  reader.hidden = !detail?.paper;
-  panelHeading('sources-panel',detail?.paper ? shortTitle(detail.paper.title) : '文献库',detail?.paper ? '文献库' : null,'close-paper');
+  renderSources();
+  panel.querySelector('#paper-detail')?.remove();
+  document.getElementById('source-body').hidden = false;
+  panelHeading('sources-panel','文献库');
+  panel.querySelector('.library-add')?.remove();
+  panel.querySelector('.panel-head').insertAdjacentHTML('beforeend','<button type="button" class="library-add" data-action="add-source" aria-label="添加来源">' + icon('plus') + '添加</button>');
   syncSourceCounters();
-  if (detail?.paper) renderDetail();
+  if (!previewingShell) renderDetail();
 }
 window.MethodAtlasLibrary = {activate: renderLibrary};
 
@@ -567,13 +878,13 @@ function studioListHTML(outputs) {
   if (!outputs.length) return `${create}<p class="empty-small">还没有内容。可以在中间和 AI 讨论，或点「新建文档」开始写作。</p>`;
   const openId = artifact?.id;
   // The list borrows the 来源 panel's card styling so every left column reads the same.
-  return `${create}<div class="library-list cards">${outputs.map(item => `<button type="button" class="library-row card${item.id === openId ? ' active' : ''}" data-action="file" data-id="${esc(item.id)}"${item.id === openId ? ' aria-current="true"' : ''}>${icon('output')}<span class="library-row-body"><strong>${esc(item.title)}</strong><small>${esc(artifactKindLabel(item))}</small></span></button>`).join('')}</div>`;
+  return `${create}<div class="library-list cards">${outputs.map(item => `<button type="button" class="library-row card${item.id === openId ? ' active' : ''}" data-action="file" data-id="${esc(item.id)}"${item.id === openId ? ' aria-current="true"' : ''}>${icon('output')}<span class="library-row-body"><strong>${esc(item.title)}</strong><small>${esc(artifactKindLabel(item))}${state?.collaboration ? (item.visibility === 'private' ? ' · 私人' : ' · 共享') : ''}</small></span></button>`).join('')}</div>`;
 }
 
 function saveWorkspaceState() {
   if (!current) return;
-  localStorage.setItem(`workspace:${current.id}`, JSON.stringify({
-    view:shellView, middle:middleView, middleItem, artifact:artifact?.id || null, version:versionId,
+  (globalThis.MethodAtlasStorage?.local || localStorage).setItem(`workspace:${current.id}`, JSON.stringify({
+    view:committedShellView, middle:middleView, middleItem, artifact:artifact?.id || null, version:versionId,
     paper:detail?.paper?.id || null, paperVersion:detail?.paper?.version_id, page:detail?.page
   }));
 }
@@ -596,104 +907,153 @@ function panelHeading(id, title, parent = null, action = null) {
 
 const workspacePanelIds = ['sources-panel','chat-panel','output-panel'];
 const narrowWorkspace = {get matches(){return document.body.clientWidth <= 67.5 * parseFloat(getComputedStyle(document.documentElement).fontSize);}};
-let activePanel = 'chat-panel';
-const collapsedPanels = new Set();
-
-function revealPanel(id) {
-  const focused = document.activeElement?.closest('.panel');
-  activePanel = id;
-  // Tab selection must not overwrite the desktop's remembered collapsed columns.
-  if (!narrowWorkspace.matches) collapsedPanels.delete(id);
-  syncPanelLayout();
-  if (narrowWorkspace.matches && focused && focused.id !== id) document.getElementById(`tab-${id}`)?.focus();
-  if (id === 'chat-panel') { markConversationRead(); renderConversationRows(); }
+let activePanel = 'chat-panel', remoteOutputOpen = false;
+const collapsedPanels = new Set(['output-panel']);
+let committedShellView = 'chat', previewingShell = false, previewTimer = null, closePreviewTimer = null;
+let seenOutputs = '';
+const layoutKey = () => `panel-layout:${current.id}`;
+function savePanelLayout() {
+  if (!current) return;
+  const sizes = ['source','chat','studio'].map((name,index) => document.querySelector('.panels')?.style.getPropertyValue(`--${name}-width`) || `${[280,700,308][index]}fr`);
+  (globalThis.MethodAtlasStorage?.local || localStorage).setItem(layoutKey(),JSON.stringify({left:!collapsedPanels.has('sources-panel'),leftDefaultExpanded:true,right:!collapsedPanels.has('output-panel'),sizes}));
 }
-
+function endShellPreview(restore = true) {
+  clearTimeout(previewTimer); clearTimeout(closePreviewTimer);
+  if (!previewingShell) return;
+  previewingShell = false;
+  document.getElementById('source-menu')?.hidePopover();
+  if (restore && shellView !== committedShellView) switchShellView(committedShellView,true);
+  syncPanelLayout();
+}
+function previewShell(key) {
+  if (!current || !document.querySelector('.workspace') || narrowWorkspace.matches || !collapsedPanels.has('sources-panel')) return;
+  clearTimeout(closePreviewTimer);
+  previewingShell = true;
+  switchShellView(key,true);
+  syncPanelLayout();
+}
+function revealPanel(id) {
+  activePanel = id;
+  if (id === 'output-panel' && middleView === 'remote') remoteOutputOpen = true;
+  if (id === 'chat-panel') {
+    endShellPreview(false);
+    markConversationRead(); renderConversationRows();
+  } else if (!narrowWorkspace.matches) {
+    collapsedPanels.delete(id); savePanelLayout();
+  }
+  if (id === 'output-panel') {
+    seenOutputs = outputSignature();
+    (globalThis.MethodAtlasStorage?.local || localStorage).setItem(`seen-outputs:${current.id}`,seenOutputs);
+  }
+  syncPanelLayout();
+}
+const outputSignature = () => current?.artifacts.filter(item => item.kind !== 'progress').map(item => `${item.id}:${item.current_version_id || item.updated || ''}`).join('|') || '';
+function togglePanel(id) {
+  if (id === 'sources-panel') endShellPreview(false);
+  const remoteOutput = id === 'output-panel' && middleView === 'remote' && !artifact;
+  if (narrowWorkspace.matches) activePanel = activePanel === id ? 'chat-panel' : id;
+  else if (remoteOutput) remoteOutputOpen = !remoteOutputOpen;
+  else if (collapsedPanels.has(id)) collapsedPanels.delete(id); else collapsedPanels.add(id);
+  if (id === 'output-panel' && (narrowWorkspace.matches ? activePanel === id : remoteOutput ? remoteOutputOpen : !collapsedPanels.has(id))) {
+    seenOutputs = outputSignature(); (globalThis.MethodAtlasStorage?.local || localStorage).setItem(`seen-outputs:${current.id}`,seenOutputs);
+  }
+  if (!remoteOutput) savePanelLayout();
+  syncPanelLayout();
+  if (narrowWorkspace.matches && activePanel !== 'chat-panel') document.querySelector(`#${activePanel} .panel-toggle`)?.focus();
+  else document.querySelector(`.app-header [data-panel="${id}"]`)?.focus();
+}
 function syncPanelLayout() {
   const panels = document.querySelector('.panels');
   if (!panels) return;
-  const labels = [shellView === 'chat' ? '对话列表' : shellViews.find(v => v.key === shellView)?.label || '文献',
-    ({chat:'对话',progress:'研究日报',remote:'实验详情',subscriptions:'订阅详情'})[middleView] || '内容','成果'];
-  const tabs = document.querySelector('.panel-tabs');
-  workspacePanelIds.forEach((id, index) => {
-    const panel = document.getElementById(id), head = panel.querySelector(':scope > .panel-head');
+  const narrow = narrowWorkspace.matches;
+  const left = narrow ? activePanel === 'sources-panel' : !collapsedPanels.has('sources-panel');
+  const right = narrow ? activePanel === 'output-panel' : middleView === 'remote' && !artifact ? remoteOutputOpen : !collapsedPanels.has('output-panel');
+  panels.classList.toggle('sources-collapsed',!left);
+  panels.classList.toggle('output-collapsed',!right);
+  panels.classList.toggle('sources-preview',!narrow && previewingShell);
+  panels.classList.toggle('drawer-open',narrow && (left || right));
+  workspacePanelIds.forEach((id,index) => {
+    const panel = document.getElementById(id), head = panel?.querySelector(':scope > .panel-head');
     if (!head) return;
-    let title = head.querySelector('.panel-title');
-    if (!title) {
-      const heading = head.querySelector('h2'), badge = head.querySelector('.badge');
-      title = document.createElement('div'); title.className = 'panel-title';
-      const previous = heading.parentElement;
-      head.prepend(title); title.append(heading);
-      if (badge) title.append(badge);
-      if (previous !== head && !previous.children.length) previous.remove();
-      head.querySelector(':scope > span[aria-hidden]')?.remove();
-    }
-    if (index === 2) {
-      let badge = title.querySelector('.badge');
-      if (!badge) { badge = document.createElement('span'); badge.className = 'badge'; title.append(badge); }
-      badge.textContent = current.artifacts.filter(item => item.kind !== 'progress').length;
-    }
-    const selected = id === activePanel, collapsed = !narrowWorkspace.matches && collapsedPanels.has(id);
-    panel.classList.toggle('panel-collapsed',collapsed);
-    panel.classList.toggle('panel-active',selected);
-    panel.setAttribute('role',narrowWorkspace.matches ? 'tabpanel' : 'region');
-    if (narrowWorkspace.matches) panel.setAttribute('aria-labelledby',`tab-${id}`);
-    else panel.removeAttribute('aria-labelledby');
-    const tab = tabs?.querySelector(`[data-panel="${id}"]`);
-    if (tab) { tab.textContent = labels[index]; tab.setAttribute('aria-selected',String(selected)); tab.tabIndex = selected ? 0 : -1; }
+    const visible = index === 1 || (index === 0 ? left || (!narrow && previewingShell) : right);
+    panel.classList.toggle('panel-active',visible);
+    panel.classList.remove('panel-collapsed');
+    panel.setAttribute('role','region'); panel.removeAttribute('aria-labelledby');
+    panel.inert = !visible || (narrow && index === 1 && (left || right));
     if (index === 1) return;
     let toggle = head.querySelector('[data-action=toggle-panel]');
     if (!toggle) {
+      head.querySelector(':scope > span[aria-hidden]')?.remove();
       toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'icon panel-toggle';
-      toggle.dataset.action = 'toggle-panel'; toggle.dataset.panel = id; toggle.innerHTML = icon('panel'); head.append(toggle);
+      toggle.dataset.action = 'toggle-panel'; toggle.dataset.panel = id; head.append(toggle);
     }
-    const toggleLabel = `${collapsed ? '展开' : '收起'}${labels[index]}`;
-    toggle.setAttribute('aria-label',toggleLabel); toggle.title = toggleLabel;
-    toggle.setAttribute('aria-expanded',String(!collapsed));
-    let rail = panel.querySelector(':scope > .panel-rail');
-    if (!rail) { rail = document.createElement('div'); rail.className = 'panel-rail'; panel.append(rail); }
-    if (collapsed) {
-      const focusedKey = rail.contains(document.activeElement) ? document.activeElement.dataset.key : null;
-      const scroll = rail.scrollTop;
-      const items = index === 0
-        ? [...panel.querySelectorAll('#source-body .conversation-row, #source-body .paper-link, #source-body .library-row, #source-body .day-row, #source-body .diary-card-content')]
-        : current.artifacts.filter(item => item.kind !== 'progress');
-      rail.replaceChildren(...items.map(item => {
-        const button = document.createElement('button'); button.type = 'button'; button.className = 'icon';
-        button.dataset.key = index === 0 ? JSON.stringify(item.dataset) : item.id;
-        const label = index === 0 ? item.querySelector('strong,h3')?.textContent || item.textContent.trim() : item.title;
-        button.title = label; button.setAttribute('aria-label',label);
-        button.innerHTML = icon(index === 2 ? 'output' : shellViews.find(v => v.key === shellView)?.icon || 'file');
-        button.onclick = () => { revealPanel(id); if (index === 0) item.click(); else loadArtifact(item.id); };
-        return button;
-      }));
-      if (focusedKey) ([...rail.children].find(button => button.dataset.key === focusedKey) || toggle).focus({preventScroll:true});
-      rail.scrollTop = scroll;
+    const open = index === 0 ? left : right;
+    const label = index === 0 ? (narrow ? '关闭列表' : open ? '取消固定左栏' : '固定左栏') : '收起成果区';
+    toggle.innerHTML = icon(index === 0 ? 'sidebarLeft' : 'sidebarRight');
+    toggle.setAttribute('aria-label',label); toggle.title = label;
+    toggle.setAttribute('aria-expanded',String(open));
+    panel.querySelector('.panel-rail')?.remove();
+    const trigger = document.querySelector(`.app-header [data-panel="${id}"]`);
+    if (trigger) {
+      const text = index === 0 ? (open ? '收起左栏' : narrow ? '打开列表' : '固定左栏') : (open ? '收起成果区' : '打开成果区');
+      trigger.setAttribute('aria-label',text); trigger.title = text;
+      trigger.setAttribute('aria-expanded',String(open));
+      trigger.classList.toggle('has-unread',index === 2 && !open && seenOutputs !== outputSignature());
     }
   });
-  panels.classList.toggle('sources-collapsed',!narrowWorkspace.matches && collapsedPanels.has('sources-panel'));
-  panels.classList.toggle('output-collapsed',!narrowWorkspace.matches && collapsedPanels.has('output-panel'));
-  panels.querySelectorAll('.panel-resizer').forEach(handle => { handle.inert = narrowWorkspace.matches || collapsedPanels.size > 0; });
-  moveIndicator(tabs,tabs?.querySelector('[aria-selected="true"]'));
+  panels.querySelectorAll('.panel-resizer').forEach(handle => { handle.inert = narrow || (Number(handle.dataset.split) === 0 ? !left : !right); });
+  const remoteToggle = document.querySelector('[data-remote-toggle-output]');
+  if (remoteToggle) {
+    const expanded = !panels.classList.contains('output-collapsed');
+    remoteToggle.innerHTML = `${icon('output')}${expanded ? '收起成果' : '展开成果'}`;
+    remoteToggle.setAttribute('aria-expanded',String(expanded));
+  }
+  const backdrop = panels.querySelector('.panel-backdrop');
+  if (backdrop) backdrop.hidden = !narrow || (!left && !right);
+  restorePanelSizes();
 }
+document.addEventListener('pointerover', event => {
+  if (event.pointerType === 'touch') return;
+  const nav = event.target.closest('.shell-nav [data-action=shell]');
+  if (event.target.closest('#sources-panel,.shell-nav,#source-menu')) clearTimeout(closePreviewTimer);
+  if (!nav || nav.contains(event.relatedTarget)) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => previewShell(nav.dataset.value),160);
+});
+document.addEventListener('pointerout',event => {
+  if (!event.target.closest('.shell-nav,#sources-panel,#source-menu')) return;
+  if (event.relatedTarget?.closest?.('.shell-nav,#sources-panel,#source-menu')) return;
+  clearTimeout(previewTimer);
+  closePreviewTimer = setTimeout(() => {
+    if (!document.activeElement?.closest('#sources-panel')) endShellPreview();
+  },220);
+});
+document.addEventListener('focusout',event => {
+  if (previewingShell && event.relatedTarget && event.target.closest('#sources-panel,#source-menu') && !event.relatedTarget.closest('#sources-panel,.shell-nav,#source-menu')) endShellPreview();
+});
+document.addEventListener('keydown',event => {
+  if (event.key === 'ArrowRight' && event.target.matches('.shell-nav [data-action=shell]')) {
+    event.preventDefault(); previewShell(event.target.dataset.value);
+    document.querySelector('#sources-panel button')?.focus();
+  }
+  if (event.key === 'Escape' && (previewingShell || narrowWorkspace.matches && activePanel !== 'chat-panel')) {
+    const id = activePanel; endShellPreview(); activePanel = 'chat-panel'; syncPanelLayout();
+    (document.querySelector(`.app-header [data-panel="${id}"]`) || document.querySelector('.shell-nav [aria-current=page]'))?.focus();
+  }
+  if (event.key === 'Tab' && narrowWorkspace.matches && activePanel !== 'chat-panel') {
+    const controls = [...document.querySelectorAll(`#${activePanel} button, #${activePanel} input, #${activePanel} textarea, #${activePanel} a[href], #${activePanel} summary, #${activePanel} [tabindex="0"]`)].filter(el=>!el.disabled && el.checkVisibility());
+    const edge = event.shiftKey ? controls[0] : controls.at(-1);
+    if (event.target === edge) {event.preventDefault(); (event.shiftKey ? controls.at(-1) : controls[0])?.focus();}
+  }
+});
+
 function reflowWorkspace() {
   syncPanelLayout();
   const nav = document.querySelector('.shell-nav');
   if (nav) moveIndicator(nav,nav.querySelector('.active'),true);
-  const focused = document.activeElement?.closest('.panel');
-  if (narrowWorkspace.matches && focused && focused.id !== activePanel) document.getElementById(`tab-${activePanel}`)?.focus();
 }
 window.addEventListener('resize',reflowWorkspace);
 window.addEventListener('typographychange',reflowWorkspace);
-document.addEventListener('keydown',event => {
-  const tab = event.target.closest('.panel-tabs [role=tab]');
-  if (!tab || !['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
-  event.preventDefault();
-  const index = workspacePanelIds.indexOf(tab.dataset.panel);
-  const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowRight' ? 1 : 2)) % 3;
-  revealPanel(workspacePanelIds[next]); document.getElementById(`tab-${workspacePanelIds[next]}`).focus();
-});
-
 // The left navigation swaps the list and the middle together. A view brings the middle it last had
 // open back (or asks its module for the default one), and the views with no middle of their own fall
 // back to the conversation. The right column is never touched. followMiddle re-enters: a module's
@@ -701,7 +1061,18 @@ document.addEventListener('keydown',event => {
 let middleFollowing = null;
 function followMiddle(key) {
   if (middleFollowing === key) return;
-  if (key === 'chat' || key === 'library') { if (middleView !== 'chat') openMiddle('chat'); return; }
+  if (key === 'library') {
+    if (detail?.paper) {
+      if (middleView !== 'reader') openMiddle('reader','',null,false);
+      panelHeading('chat-panel',shortTitle(detail.paper.title),'文献库','close-paper');
+      const body = document.getElementById('chat-body');
+      if (!body.querySelector('#paper-detail')) body.innerHTML = '<div id="paper-detail"></div>';
+      if (!body.querySelector('.reader-shell')) renderDetail();
+    }
+    else { if (middleView !== 'library') openMiddle('library','论文推荐'); window.MethodAtlasSubscriptions?.activate(); }
+    return;
+  }
+  if (key === 'chat') { if (middleView !== 'chat') openMiddle('chat'); return; }
   if (middleView === key) return;
   const module = shellModules()[key];
   if (!module) return;
@@ -719,11 +1090,12 @@ function followMiddle(key) {
   } finally { middleFollowing = null; }
 }
 
-function switchShellView(key) {
+function switchShellView(key, preview = false) {
+  if (key === 'subscriptions') key = 'library';
   if (!shellViews.some(view => view.key === key)) return;
-  if (key === shellView) { followMiddle(key); return; }
-  paperRequest++;
-  document.body.classList.remove('reader-fullscreen');
+  if (!preview) { clearTimeout(previewTimer); clearTimeout(closePreviewTimer); previewingShell = false; committedShellView = key; document.getElementById('source-menu')?.hidePopover(); }
+  if (key === shellView) { if (!preview) followMiddle(key); syncPanelLayout(); return; }
+  if (!preview) { paperRequest++; document.body.classList.remove('reader-fullscreen'); }
   viewPanels.set(shellView,capturePanel('sources-panel'));
   document.getElementById('sources-panel').replaceChildren();
   shellView = key;
@@ -732,18 +1104,20 @@ function switchShellView(key) {
   else document.getElementById('sources-panel').innerHTML = '<div class="panel-head"><h2></h2><span class="badge"></span></div><div class="panel-body" id="source-body"></div><div id="history-area"></div>';
   if (key === 'library') { if (saved) renderSources(); else renderLibrary(); }
   else if (key === 'chat') { if (saved) renderConversationRows(); else renderChatList(); }
-  else if (key === 'subscriptions' || !saved || !document.getElementById('source-body')?.textContent.trim()) renderShellView();
+  else if (key === 'subscriptions' || !saved || !document.getElementById('source-body')?.textContent.trim()) {
+    if (preview && key === 'progress') window.MethodAtlasProgress.preview(); else renderShellView();
+  }
   const label = shellViews.find(view=>view.key===key).label;
-  if (key !== 'library') panelHeading('sources-panel',label);
+  if (key !== 'library') panelHeading('sources-panel',key === 'chat' ? '历史对话' : label);
   document.querySelectorAll('.shell-nav [data-action=shell]').forEach(button => {
-    const active = button.dataset.value === key;
+    const active = button.dataset.value === committedShellView;
     button.classList.toggle('active',active);
     if (active) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current');
   });
   const nav = document.querySelector('.shell-nav');
   moveIndicator(nav,nav.querySelector('.active'),true);
-  followMiddle(key);
-  saveWorkspaceState();
+  if (!preview) { followMiddle(key); saveWorkspaceState(); }
+  syncPanelLayout();
 }
 
 // The middle column is swapped in whole: the panel the previous view was using is cached, and the one
@@ -754,16 +1128,21 @@ function showMiddlePanel(key) {
   const saved = middlePanels.get(key);
   if (saved) restorePanel('chat-panel',saved);
   else document.getElementById('chat-panel').innerHTML = '<div class="panel-head"><h2></h2><span id="chat-tools" class="row"></span></div><div id="chat-body"></div>';
+  window.MethodAtlasAI?.mainPlaceholder();
 }
 
-function openMiddle(key, title = '', item = null) {
+function openMiddle(key, title = '', item = null, focus = true) {
   middleRequest++;
+  if (shellViews.some(view => view.key === key)) {
+    committedShellView = key; previewingShell = false;
+    document.querySelectorAll('.shell-nav [data-action=shell]').forEach(button => {const active = button.dataset.value === key; button.classList.toggle('active',active); if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');});
+  }
   if (key !== middleView) showMiddlePanel(key);
   middleItem = item;
   if (item) middleItems.set(key,item);
   panelHeading('chat-panel',key === 'chat' ? 'AI 对话' : title,key === 'chat' ? null : 'AI 对话','back-chat');
   if (key === 'chat') { renderChat(); window.MethodAtlasProgress?.chatHeader(); pumpQueue(); }
-  revealPanel('chat-panel');
+  if (focus) revealPanel('chat-panel');
   saveWorkspaceState();
   return middleRequest;
 }
@@ -789,7 +1168,7 @@ async function closeArtifact() {
 
 function renderWorkspace() {
   if (workspaceProject === current.id && document.querySelector('.workspace')) {
-    localStorage.setItem('methodatlas-view', JSON.stringify({projectId:current.id,conversationId:conversation.id}));
+    (globalThis.MethodAtlasStorage?.local || localStorage).setItem('methodatlas-view', JSON.stringify({projectId:current.id,conversationId:serverConversationId()}));
     viewPanels.delete('chat');
     lastStarted = null; loadQueue();
     if (shellView !== 'chat') switchShellView('chat');
@@ -801,16 +1180,23 @@ function renderWorkspace() {
   window.MethodAtlasWriting?.unmount();
   outputKey = null;
   workspaceProject = current.id;
+  remoteOutputOpen = false;
+  committedShellView = shellView; previewingShell = false; clearTimeout(previewTimer); clearTimeout(closePreviewTimer);
+  seenOutputs = (globalThis.MethodAtlasStorage?.local || localStorage).getItem(`seen-outputs:${current.id}`) ?? outputSignature();
+  collapsedPanels.clear();
+  let layout; try { layout=JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(layoutKey())); } catch {}
+  if (layout?.leftDefaultExpanded && layout.left === false) collapsedPanels.add('sources-panel');
+  if (!layout?.right) collapsedPanels.add('output-panel');
   viewPanels.clear(); middlePanels.clear(); middleItems.clear(); middleView = 'chat'; middleItem = null; middleRequest++;
   // Every view is rebuilt inside this function, so the reader goes with it — full screen cannot outlive
   // the page it was opened on, or the next view would render as a reading surface with no way out.
   document.body.classList.remove('reader-fullscreen');
-  localStorage.setItem('methodatlas-view', JSON.stringify({projectId:current.id, conversationId:conversation.id}));
+  (globalThis.MethodAtlasStorage?.local || localStorage).setItem('methodatlas-view', JSON.stringify({projectId:current.id, conversationId:serverConversationId()}));
   lastStarted = null;
   loadQueue();
   document.getElementById('app').innerHTML = `<main class="workspace">
-    <header class="app-header"><div class="row workspace-brand"><button class="icon" data-action="home" aria-label="返回项目列表">${icon('back')}</button><span class="brandmark" aria-hidden="true"><img src="assets/methodatlas-mark.png" alt=""></span><span class="project-title" title="${esc(current.name)}">${esc(current.name)}</span></div><div class="row workspace-actions" aria-label="工作区操作"><button type="button" data-action="settings" class="pill">设置</button><button class="primary workspace-create" data-action="new-project" aria-label="新建项目">${icon('plus')}<span>新建项目</span></button><button class="icon workspace-share" disabled aria-label="分享（暂未开放）" title="分享暂未开放">${icon('share')}</button><span class="avatar workspace-avatar" role="img" aria-label="用户头像（占位）" title="用户头像 · 暂未接入账号">M</span></div></header>
-    <div class="shell"><nav class="shell-nav" aria-label="工作台导航">${shellNav()}<span class="shell-nav-indicator" aria-hidden="true"></span></nav><div class="workspace-content"><div class="panel-tabs" role="tablist" aria-label="工作区栏目">${workspacePanelIds.map(id => `<button type="button" role="tab" id="tab-${id}" data-action="panel-tab" data-panel="${id}" aria-controls="${id}"></button>`).join('')}<span class="panel-tabs-indicator" aria-hidden="true"></span></div><div class="panels"><section class="panel" id="sources-panel" aria-label="来源区域"><div class="panel-head"><div class="row"><h2>来源</h2><span class="badge"></span></div><span aria-hidden="true">${icon('panel')}</span></div><div class="panel-body" id="source-body"></div><div id="paper-detail"></div><div id="history-area"></div></section>
+    <header class="app-header"><div class="row workspace-brand"><button class="icon" data-action="toggle-panel" data-panel="sources-panel" aria-controls="sources-panel" aria-label="固定左栏">${icon('sidebarLeft')}</button><button class="icon workspace-back" data-action="home" aria-label="返回项目列表">${icon('back')}</button><span class="brandmark" aria-hidden="true"><img src="assets/methodatlas-mark.png?v=poster-20261013" alt=""></span><span class="project-title" title="${esc(current.name)}">${esc(current.name)}</span></div><div class="row workspace-actions" aria-label="工作区操作"><button class="icon" type="button" data-ai="open" aria-label="打开 AI 对话" title="打开 AI 对话">${icon('spark')}</button>${window.MethodAtlasSearch?.header() || ''}<button class="icon" data-action="toggle-panel" data-panel="output-panel" aria-controls="output-panel" aria-label="打开成果区">${icon('sidebarRight')}</button><button type="button" data-action="settings" class="pill">设置</button>${window.MethodAtlasCollaboration?.header() || ''}</div></header>
+    <div class="shell"><nav class="shell-nav" aria-label="工作台导航">${globalNav()}${shellNav()}<div class="shell-nav-bottom"><button data-action="settings" aria-label="设置" title="设置">${icon('settings')}</button></div><span class="shell-nav-indicator" aria-hidden="true"></span></nav><div class="workspace-content"><div class="panels"><button class="panel-backdrop" data-action="close-panels" aria-label="关闭侧栏" hidden></button><section class="panel" id="sources-panel" aria-label="来源区域"><div class="panel-head"><div class="row"><h2>来源</h2><span class="badge"></span></div><span aria-hidden="true">${icon('panel')}</span></div><div class="panel-body" id="source-body"></div><div id="history-area"></div></section>
       <div class="panel-resizer" role="separator" aria-orientation="vertical" aria-label="调整来源与对话宽度" aria-controls="sources-panel chat-panel" tabindex="0" data-split="0"></div>
       <section class="panel" id="chat-panel" aria-label="主要功能区"><div class="panel-head"><h2>对话</h2><div class="row"><span id="chat-tools" class="row"></span></div></div><div id="chat-body"></div></section>
       <div class="panel-resizer" role="separator" aria-orientation="vertical" aria-label="调整主要功能与成果区宽度" aria-controls="chat-panel output-panel" tabindex="0" data-split="1"></div>
@@ -818,7 +1204,7 @@ function renderWorkspace() {
   activePanel = 'chat-panel';
   restorePanelSizes();
   renderShellView(); renderChat();
-  panelHeading('sources-panel','AI 对话');
+  panelHeading('sources-panel','历史对话');
   panelHeading('chat-panel','AI 对话');
   panelHeading('output-panel','成果');
   renderOutput();
@@ -829,12 +1215,12 @@ function renderHistory() {
   document.querySelector('[data-action=history]')?.setAttribute('aria-expanded',String(historyOpen));
   const host = document.getElementById('history-area');
   if (!host || shellView !== 'chat') return;
-  host.innerHTML = historyOpen ? `<section id="conversation-menu" class="history-panel" aria-label="对话历史"><div class="panel-head"><h2>历史记录</h2><button class="icon" data-action="close-history" aria-label="关闭历史记录">${icon('close')}</button></div><div class="panel-body">${current.conversations.map(c => `<button class="history-item ${c.id === conversation.id ? 'active' : ''}" data-action="conversation" data-id="${esc(c.id)}" ${c.id === conversation.id ? 'aria-current="true"' : ''}><strong>${esc(c.title)}</strong><small>${c.id === conversation.id ? '当前对话' : `${c.messages.length} 条消息`}</small></button>`).join('')}<details class="reading-history" ${disclosure(`${conversation.id}:reads`)}><summary>已读取 · ${new Set((conversation.reads || []).map(r => r.paper_id)).size} 篇</summary>${(conversation.reads || []).map(r => `<button data-action="read-paper" data-id="${r.paper_id}" data-version="${r.paper_version_id}">${esc(shortTitle(r.title))}</button>`).join('')}</details></div></section>` : '';
+  host.innerHTML = historyOpen ? `<section id="conversation-menu" class="history-panel" aria-label="对话历史"><div class="panel-head"><h2>历史记录</h2><button class="icon" data-action="close-history" aria-label="关闭历史记录">${icon('close')}</button></div><div class="panel-body">${current.conversations.map(c => `<button class="history-item ${c.id === conversation.id ? 'active' : ''}" data-action="conversation" data-id="${esc(c.id)}" ${c.id === conversation.id ? 'aria-current="true"' : ''}><strong>${esc(c.title)}</strong><small>${c.id === conversation.id ? '当前对话' : `${c.message_count ?? c.messages.length} 条消息`}</small></button>`).join('')}<details class="reading-history" ${disclosure(`${conversation.id}:reads`)}><summary>已读取 · ${new Set((conversation.reads || []).map(r => r.paper_id)).size} 篇</summary>${(conversation.reads || []).map(r => `<button data-action="read-paper" data-id="${r.paper_id}" data-version="${r.paper_version_id}">${esc(shortTitle(r.title))}</button>`).join('')}</details></div></section>` : '';
 }
 
 function restorePanelSizes() {
   let sizes;
-  try { sizes = JSON.parse(localStorage.getItem('panel-widths')); } catch {}
+  try { const layout=JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(layoutKey())); sizes=layout?.sizes?.map(value=>parseFloat(value)); } catch {}
   if (Array.isArray(sizes) && sizes.length === 3 && sizes.every(n => Number.isFinite(n) && n > 0)) {
     const panels = document.querySelector('.panels');
     ['source','chat','studio'].forEach((name,i) => panels.style.setProperty(`--${name}-width`,`${sizes[i]}fr`));
@@ -843,35 +1229,59 @@ function restorePanelSizes() {
     // A collapsed column measures 0px, so there is no ratio left to report on the divider in front of it.
     if (handle.inert) return;
     const widths = [...handle.parentElement.querySelectorAll(':scope > .panel')].map(p => p.getBoundingClientRect().width);
-    const i = Number(handle.dataset.split), total = widths[i] + widths[i+1], mins = [180,280,220];
-    handle.setAttribute('aria-valuemin',Math.ceil(mins[i] / total * 100));
-    handle.setAttribute('aria-valuemax',Math.floor((total - mins[i+1]) / total * 100));
+    const i = Number(handle.dataset.split), total = widths[i] + widths[i+1], mins = [14,20,16].map(rem => rem * parseFloat(getComputedStyle(document.documentElement).fontSize));
+    handle.setAttribute('aria-valuemin',Math.round(mins[i] / total * 100));
+    handle.setAttribute('aria-valuemax',Math.round((total - mins[i+1]) / total * 100));
     handle.setAttribute('aria-valuenow',Math.round(widths[i] / total * 100));
   });
+}
+
+function resetPanelSizes() {
+  if (!current || !document.querySelector('.panels')) return;
+  ['source','chat','studio'].forEach(name=>document.querySelector('.panels').style.removeProperty(`--${name}-width`));
+  savePanelLayout(); restorePanelSizes();
 }
 
 function resizePanels(handle, delta) {
   if (handle.inert) return;
   handle.parentElement.getAnimations().forEach(animation => animation.cancel());
   const widths = [...handle.parentElement.querySelectorAll(':scope > .panel')].map(p => p.getBoundingClientRect().width);
-  const i = Number(handle.dataset.split), total = widths[i] + widths[i+1], mins = [180,280,220];
+  const i = Number(handle.dataset.split), total = widths[i] + widths[i+1], mins = [14,20,16].map(rem => rem * parseFloat(getComputedStyle(document.documentElement).fontSize));
   widths[i] = Math.max(mins[i],Math.min(total - mins[i+1],widths[i] + delta));
   widths[i+1] = total - widths[i];
-  // A collapsed third column measures 0px. Its remembered share has to be carried over, or dragging the
-  // other divider would save a zero and throw away all three widths.
-
-  localStorage.setItem('panel-widths',JSON.stringify(widths));
-  restorePanelSizes();
+  // Freeze every visible share to the measured pixels; retain the remembered share of a closed panel.
+  ['source','chat','studio'].forEach((name,index) => {
+    if (index === 0 && handle.parentElement.classList.contains('sources-collapsed') || index === 2 && handle.parentElement.classList.contains('output-collapsed')) return;
+    handle.parentElement.style.setProperty(`--${name}-width`,`${widths[index]}fr`);
+  });
+  savePanelLayout(); restorePanelSizes();
 }
 
 document.addEventListener('pointerdown', event => {
   const handle = event.target.closest('.panel-resizer');
   if (!handle || event.button !== 0) return;
   event.preventDefault(); handle.focus(); handle.setPointerCapture(event.pointerId);
-  let x = event.clientX;
+  let x = event.clientX, target = x, frame = 0, previousTime = 0;
+  const reduced = () => window.MethodAtlasSettings?.reducedMotion() || matchMedia('(prefers-reduced-motion: reduce)').matches;
   document.body.classList.add('resizing-panels');
-  const move = e => { resizePanels(handle,e.clientX - x); x = e.clientX; };
+  const follow = time => {
+    frame = 0;
+    const elapsed = previousTime ? Math.min(time - previousTime, 64) : 16;
+    previousTime = time;
+    // A 55ms response adds a little weight without delaying the pointer itself.
+    const delta = reduced() || Math.abs(target - x) < .25 ? target - x : (target - x) * (1 - Math.exp(-elapsed / 55));
+    resizePanels(handle,delta); x += delta;
+    if (Math.abs(target - x) > .01) frame = requestAnimationFrame(follow);
+    else previousTime = 0;
+  };
+  const move = e => {
+    target = e.clientX;
+    if (reduced()) { resizePanels(handle,target - x); x = target; }
+    else if (!frame) frame = requestAnimationFrame(follow);
+  };
   const end = () => {
+    cancelAnimationFrame(frame);
+    resizePanels(handle,target - x);
     document.body.classList.remove('resizing-panels');
     handle.removeEventListener('pointermove',move);
     handle.removeEventListener('lostpointercapture',end);
@@ -887,18 +1297,202 @@ document.addEventListener('keydown', event => {
 window.addEventListener('resize', () => { if (document.querySelector('.panels')) restorePanelSizes(); });
 
 // The list of materials is shared: the workbench shows it in its own column, the library view reuses it verbatim.
+function paperSource(paper) {
+  const metadata = paper.metadata || {}, version = paper.version_id || paper.current_version_id;
+  // A user's supplemental PDF must not inherit the provenance of a previous download.
+  return metadata.discovery_accepted?.[version] || metadata.discovery_versions?.[version]
+    || (metadata.supplement_filename ? {filename:metadata.supplement_filename} : metadata);
+}
+function paperSourceLabel(paper) {
+  const source = paperSource(paper);
+  return [String(source.published || '').match(/^\d{4}/)?.[0],
+    ({'conference-paper':'会议版',article:'期刊版',preprint:'预印本'})[source.publication_type]
+    || ({submittedVersion:'投稿版',acceptedVersion:'接收版'})[source.source_version],
+    source.filename ? '上传的 PDF' : ''].filter(Boolean).join(' · ');
+}
+function paperMeta(paper) {
+  const a = paper.availability || {}, year = paperSourceLabel(paper);
+  const status = paper.source_kind === 'text' ? '文字资料'
+    : a.fulltext === 'pending' ? '获取全文中'
+    : a.parse === 'abstract' || a.abstract === 'available' && !['downloaded','provided'].includes(a.fulltext) ? '仅摘要'
+    : a.parse === 'metadata_only' || ['failed','unavailable','not_fetched'].includes(a.fulltext) ? '仅元数据'
+    : a.parse === 'partial' ? '部分内容需核对原图'
+    : a.parse && a.parse !== 'parsed' ? '解析未完成'
+    : ['downloaded','provided'].includes(a.fulltext) ? `全文可用 · ${paper.page_count || 0} 页` : `${paper.page_count || 0} 页`;
+  return [year,status].filter(Boolean).join(' · ');
+}
+const sourceStates = new Map();
+function sourceState() {
+  if (!sourceStates.has(current.id)) sourceStates.set(current.id, {busy:false, error:'', editor:null});
+  return sourceStates.get(current.id);
+}
+function sourceOrganization() {
+  return current.source_organization || {revision:0, labels:[], assignments:{}, view:'list', sort:'recent', collapsed:[], can_undo:false};
+}
+const sourceSortNames = {recent:'最近添加', title:'标题', type:'文件类型'};
+function sourceType(paper) {
+  return paper.source_kind === 'text' ? 'text' : /pdf/.test(paper.source_kind) ? 'pdf' : 'link';
+}
+function sortedSources() {
+  const sort = sourceOrganization().sort, collator = new Intl.Collator('zh-CN', {numeric:true});
+  return [...(window.MethodAtlasSearch?.filter(current.papers) || current.papers)].sort((a,b) => (sort === 'recent' ? String(b.added_at || '').localeCompare(a.added_at || '') : sort === 'type' ? sourceType(a).localeCompare(sourceType(b)) : 0) || collator.compare(a.title,b.title) || a.id.localeCompare(b.id));
+}
+function sourceRow(paper) {
+  const type = sourceType(paper), busy = sourceState().busy;
+  return `<div class="paper-row" data-source-id="${esc(paper.id)}"><span class="source-file-icon" data-type="${type}" title="${{pdf:'PDF',text:'文字资料',link:'论文链接'}[type]}">${icon(type === 'link' ? 'globe' : type === 'text' ? 'output' : 'file')}</span><button class="paper-link" data-action="paper" data-id="${esc(paper.id)}" aria-label="查看论文：${esc(paper.title)}" title="${esc(paper.title)}"><strong>${window.MethodAtlasSearch?.highlight(shortTitle(paper.title)) || esc(shortTitle(paper.title))}</strong><span class="paper-meta sr-only">${esc(paperMeta(paper))}</span></button><span class="paper-warning-slot"></span><button class="icon source-more" data-source-command="paper-menu" data-id="${esc(paper.id)}" aria-label="管理资料：${esc(paper.title)}" aria-haspopup="menu" ${busy ? 'disabled' : ''}>${icon('dots')}</button><input type="checkbox" data-paper="${esc(paper.id)}" aria-label="选择论文：${esc(paper.title)}" ${selected.has(paper.id) ? 'checked' : ''} ${paper.current_version_id ? '' : 'disabled'}></div>`;
+}
+function sourceGroup(label, papers) {
+  const closed = window.MethodAtlasSearch?.collapsed(label.id,sourceOrganization().collapsed.includes(label.id)) ?? sourceOrganization().collapsed.includes(label.id), selectable = papers.filter(p => p.current_version_id);
+  return `<section class="source-group ${closed ? 'is-collapsed' : ''}" data-label-id="${esc(label.id)}"><div class="source-group-head"><button class="source-group-toggle" data-source-command="toggle" data-id="${esc(label.id)}" aria-expanded="${!closed}" aria-controls="source-group-${esc(label.id)}" ${sourceState().busy ? 'disabled' : ''}>${icon('chevron')}<span>${window.MethodAtlasSearch?.highlight(label.name) || esc(label.name)}</span><small>${papers.length}</small></button>${label.id !== 'unclassified' ? `<button class="icon source-more" data-source-command="label-menu" data-id="${esc(label.id)}" aria-label="管理分类：${esc(label.name)}" aria-haspopup="menu" ${sourceState().busy ? 'disabled' : ''}>${icon('dots')}</button>` : ''}<input type="checkbox" data-source-group="${esc(label.id)}" aria-label="选择分类：${esc(label.name)}" ${selectable.length && selectable.every(p => selected.has(p.id)) ? 'checked' : ''} ${selectable.length ? '' : 'disabled'}></div><div class="source-group-content" id="source-group-${esc(label.id)}" ${closed ? 'inert' : ''}><div>${papers.map(sourceRow).join('') || '<p class="source-group-empty">从资料菜单移入论文</p>'}</div></div></section>`;
+}
 function sourcesBodyHTML() {
-  const papers = current.papers;
-  const selectable = papers.filter(paper => paper.current_version_id);
-  const selectedCount = selectable.filter(paper => selected.has(paper.id)).length;
-  return `<div class="source-actions"><button class="primary" data-action="add-source">${icon('plus')}添加来源</button><small>上传 PDF、粘贴论文链接或保存原文文字。</small></div><div class="source-count"><span>已选 ${selectedCount} / ${selectable.length} 篇</span><label>全选<input id="select-all" type="checkbox" ${selectable.length && selectable.every(paper => selected.has(paper.id)) ? 'checked' : ''} ${selectable.length ? '' : 'disabled'}></label></div><div id="paper-list">${papers.map(paper => `<div class="paper-row" data-source-id="${esc(paper.id)}">${icon('file')}<button class="paper-link" data-action="paper" data-id="${esc(paper.id)}" aria-label="查看论文：${esc(paper.title)}" title="${esc(shortTitle(paper.title))}"><strong>${esc(shortTitle(paper.title))}</strong><span class="paper-meta">${paper.source_kind === 'text' ? '文字资料' : `${paper.page_count || 0} 页`}</span></button><span class="paper-warning-slot"></span><input type="checkbox" data-paper="${esc(paper.id)}" aria-label="选择论文：${esc(paper.title)}" ${selected.has(paper.id) ? 'checked' : ''} ${paper.current_version_id ? '' : 'disabled'}></div>`).join('') || '<p class="empty-small">还没有资料，点击「添加来源」开始导入。</p>'}</div>`;
+  const papers = sortedSources(), organization = sourceOrganization(), state = sourceState();
+  const selectable = papers.filter(paper => paper.current_version_id), selectedCount = selectable.filter(p => selected.has(p.id)).length;
+  const searchOpen = window.MethodAtlasSearch?.listOpen('source');
+  const aiLabel = organization.view === 'labels' ? '管理分类' : organization.labels.length ? '返回分类视图' : 'AI 智能分类';
+  const groups = [...organization.labels];
+  if (papers.some(p => !organization.assignments[p.id])) groups.push({id:'unclassified',name:'未分类'});
+  const content = organization.view === 'labels' ? groups.filter(label => !window.MethodAtlasSearch?.query() || papers.some(p => (organization.assignments[p.id] || 'unclassified') === label.id)).map(label => sourceGroup(label,papers.filter(p => (organization.assignments[p.id] || 'unclassified') === label.id))).join('') : papers.map(sourceRow).join('');
+  return `
+    <div class="source-count"><div class="source-tools"><button class="icon source-ai ${state.busy === 'classify' ? 'is-organizing' : ''}" data-source-command="ai" data-search-background="source" ${searchOpen?'inert':''} aria-label="${aiLabel}" title="${aiLabel}" ${state.busy || !papers.length && !organization.labels.length ? 'disabled' : ''}>${icon('spark')}</button><button class="icon" data-source-command="sort-menu" data-search-background="source" ${searchOpen?'inert':''} aria-label="排序：${sourceSortNames[organization.sort]}" title="排序：${sourceSortNames[organization.sort]}" aria-haspopup="menu" ${state.busy ? 'disabled' : ''}>${icon('sort')}</button>${window.MethodAtlasSearch?.toggle() || ''}</div><span class="source-selection-count" data-search-background="source" ${searchOpen?'inert':''} aria-label="已选 ${selectedCount} / ${selectable.length} 篇">${selectedCount} / ${selectable.length}</span><label data-search-background="source" ${searchOpen?'inert':''}>${window.MethodAtlasSearch?.query() ? '选择结果' : '全选'}<input id="select-all" type="checkbox" ${selectable.length && selectable.every(paper => selected.has(paper.id)) ? 'checked' : ''} ${selectable.length ? '' : 'disabled'}></label></div>
+    ${state.busy === 'classify' ? '<div class="source-feedback source-working" role="status"><span class="source-pulse"></span>正在按研究主题整理…<small>完成后自动分组，可撤销</small></div>' : ''}
+    ${state.error ? `<div class="source-feedback source-error" role="alert">${esc(state.error)}<button class="quiet" data-source-command="dismiss">知道了</button></div>` : ''}
+    ${organization.can_undo && !state.busy ? '<div class="source-feedback source-undo" role="status">AI 分类已完成<button class="quiet" data-source-command="undo">撤销</button></div>' : ''}
+    ${state.editor ? `<form id="source-label-form" class="source-label-editor"><label for="source-label-name">${state.editor.id ? '重命名分类' : '新增分类'}</label><input id="source-label-name" name="name" maxlength="80" required value="${esc(state.editor.name)}" placeholder="输入分类名称" ${state.busy ? 'disabled' : ''}><div><button class="quiet" type="button" data-source-command="cancel-edit" ${state.busy ? 'disabled' : ''}>取消</button><button class="primary" type="submit" ${state.busy ? 'disabled' : ''}>保存</button></div></form>` : ''}
+    <div id="paper-list" aria-busy="${state.busy === 'classify'}">${content || (window.MethodAtlasSearch?.query() ? '<p class="empty-small">没有匹配的资料，试试其他关键词。</p>' : '<p class="empty-small">还没有资料，点击「添加来源」开始导入。</p>')}</div>${window.MethodAtlasSearch?.footer() || ''}`;
 }
 
+async function changeSources(action, fields = {}) {
+  const project = current.id, state = sourceState();
+  if (state.busy) return;
+  state.busy = action; state.error = '';
+  const request = {revision:sourceOrganization().revision, ...fields};
+  if (action !== 'preferences') renderSources();
+  try {
+    const result = await api(`/api/projects/${encodeURIComponent(project)}/source-organization/${action}`, {method:'POST',body:JSON.stringify(request)});
+    if (current?.id === project) current.source_organization = result;
+    if (action === 'create' || action === 'rename') state.editor = null;
+    return result;
+  } catch (error) {
+    state.error = error.message;
+  } finally {
+    state.busy = false;
+    if (current?.id === project && (!fields.collapsed || state.error)) renderSources();
+  }
+}
+
+function sourceMenu(trigger, kind, id = '') {
+  let menu = document.getElementById('source-menu');
+  if (!menu) {
+    menu = document.createElement('div'); menu.id = 'source-menu'; menu.className = 'source-menu';
+    menu.setAttribute('popover','auto'); menu.setAttribute('role','menu'); document.body.append(menu);
+    menu.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation(); menu.hidePopover();
+        menu.sourceTrigger?.focus({preventScroll:true});
+        return;
+      }
+      const buttons = [...menu.querySelectorAll('button:not(:disabled)')];
+      if (['ArrowDown','ArrowUp','Home','End'].includes(event.key)) {
+        event.preventDefault();
+        const i = buttons.indexOf(document.activeElement), next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (i + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[next]?.focus();
+      }
+    });
+    menu.addEventListener('toggle', event => {
+      if (event.newState === 'closed') menu.sourceTrigger?.setAttribute('aria-expanded','false');
+    });
+  }
+  const organization = sourceOrganization();
+  const item = (command, text, glyph, value = '', checked = null) => `<button type="button" role="${checked === null ? 'menuitem' : 'menuitemradio'}" ${checked === null ? '' : `aria-checked="${checked}"`} data-source-command="${command}" data-id="${esc(id)}" data-value="${esc(value)}">${icon(glyph)}<span>${esc(text)}</span>${checked ? icon('check') : ''}</button>`;
+  let content;
+  if (kind === 'sort') content = Object.entries(sourceSortNames).map(([value,name]) => item('sort',name,'sort',value,organization.sort === value)).join('');
+  if (kind === 'manage') content = item('create','新增分类','plus') + item('reorganize','重新 AI 整理','spark') + '<hr>' + item('list','返回列表视图','list');
+  if (kind === 'label') content = item('rename','重命名','edit') + item('delete','删除分类','trash');
+  if (kind === 'reorganize') content = item('manage','返回','back') + item('classify','仅整理未分类资料','label','unclassified') + item('classify','全部重新分类','spark','all');
+  if (kind === 'paper') content = '<p class="source-menu-title">移动到分类</p>' + organization.labels.map(label => item('move',label.name,'label',label.id,organization.assignments[id] === label.id)).join('') + item('move','未分类','file','',!organization.assignments[id]) + '<hr>' + item('create','新增分类','plus');
+  if (trigger !== menu && !menu.contains(trigger)) menu.sourceTrigger = trigger;
+  menu.innerHTML = content;
+  menu.setAttribute('aria-label', {sort:'资料排序',manage:'管理分类',label:'分类操作',reorganize:'重新 AI 整理',paper:'移动到分类'}[kind]);
+  const anchor = menu.sourceTrigger;
+  if (!anchor?.isConnected) return;
+  anchor.setAttribute('aria-expanded','true');
+  if (!menu.matches(':popover-open')) menu.showPopover({source:anchor});
+  const rect = anchor.getBoundingClientRect(), size = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8,Math.min(rect.left,innerWidth-size.width-8))+'px';
+  menu.style.top = Math.max(8,Math.min(rect.bottom+6,innerHeight-size.height-8))+'px';
+  menu.querySelector('[aria-checked="true"],button')?.focus();
+}
+window.addEventListener('resize', () => document.getElementById('source-menu')?.hidePopover());
+
+document.addEventListener('click', async event => {
+  const target = event.target.closest('[data-source-command]');
+  if (!target || target.disabled || !current) return;
+  const {sourceCommand:command,id,value} = target.dataset, state = sourceState(), organization = sourceOrganization();
+  const menu = document.getElementById('source-menu');
+  if (command.endsWith('-menu')) { sourceMenu(target,command.replace('-menu',''),id); return; }
+  if (command === 'reorganize' || command === 'manage') { sourceMenu(target,command); return; }
+  menu?.hidePopover();
+  if (state.busy) return;
+  if (command === 'ai') {
+    if (organization.view === 'labels') sourceMenu(target,'manage');
+    else if (organization.labels.length) await changeSources('preferences',{view:'labels'});
+    else await changeSources('classify',{mode:'all'});
+  }
+  if (command === 'classify') {
+    if (value === 'all' && !confirm('全部重新分类将覆盖现有分类和手动整理。完成后可撤销。继续吗？')) return;
+    await changeSources('classify',{mode:value});
+  }
+  if (command === 'sort') await changeSources('preferences',{sort:value});
+  if (command === 'list') await changeSources('preferences',{view:'list'});
+  if (command === 'undo') await changeSources('undo');
+  if (command === 'move') await changeSources('move',{paper_id:id,label_id:value || null});
+  if (command === 'delete' && confirm('删除这个分类？论文会移入“未分类”，不会删除论文。')) await changeSources('delete',{id});
+  if (command === 'create' || command === 'rename') {
+    state.editor = {id:command === 'rename' ? id : '',name:organization.labels.find(label => command === 'rename' && label.id === id)?.name || ''};
+    renderSources(); document.getElementById('source-label-name')?.focus();
+  }
+  if (command === 'cancel-edit') { state.editor = null; renderSources(); }
+  if (command === 'dismiss') { state.error = ''; renderSources(); }
+  if (command === 'toggle') {
+    if (window.MethodAtlasSearch?.query()) { window.MethodAtlasSearch.toggleGroup(id); return; }
+    const collapsed = new Set(organization.collapsed);
+    collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id);
+    const group = target.closest('.source-group');
+    group.classList.toggle('is-collapsed',collapsed.has(id));
+    group.querySelector('.source-group-content').inert = collapsed.has(id);
+    target.setAttribute('aria-expanded',String(!collapsed.has(id)));
+    await changeSources('preferences',{collapsed:[...collapsed]});
+  }
+  if (menu?.contains(target) && !state.editor) document.querySelector('[data-source-command="ai"]')?.focus({preventScroll:true});
+});
+document.addEventListener('input', event => {
+  if (event.target.id === 'source-label-name' && sourceState().editor) sourceState().editor.name = event.target.value;
+});
+document.addEventListener('submit', event => {
+  if (event.target.id !== 'source-label-form') return;
+  event.preventDefault();
+  const editor = sourceState().editor;
+  if (editor) changeSources(editor.id ? 'rename' : 'create',{id:editor.id,name:event.target.elements.name.value});
+});
+document.addEventListener('change', event => {
+  const id = event.target.dataset.sourceGroup;
+  if (!id) return;
+  const assignments = sourceOrganization().assignments;
+  sortedSources().filter(p => p.current_version_id && (assignments[p.id] || 'unclassified') === id).forEach(p => event.target.checked ? selected.add(p.id) : selected.delete(p.id));
+  saveSelection(); renderSelectionViews();
+});
+
 function syncSourceCounters() {
-  const selectable = current.papers.filter(paper => paper.current_version_id);
+  const selectable = sortedSources().filter(paper => paper.current_version_id);
   const selectedCount = selectable.filter(paper => selected.has(paper.id)).length;
   const all = document.getElementById('select-all');
   if (all) all.indeterminate = selectedCount > 0 && selectedCount < selectable.length;
+  document.querySelectorAll('[data-source-group]').forEach(input => {
+    const group = selectable.filter(p => (sourceOrganization().assignments[p.id] || 'unclassified') === input.dataset.sourceGroup);
+    const count = group.filter(p => selected.has(p.id)).length;
+    input.indeterminate = count > 0 && count < group.length;
+  });
 }
 
 function renderSources() {
@@ -906,8 +1500,19 @@ function renderSources() {
   if (shellView === 'chat') { syncSourceCounters(); return; }
   if (shellView !== 'library') return;
   const host = document.getElementById('source-body'), top = host.scrollTop;
+  const positions = new Map([...host.querySelectorAll('[data-source-id]')].filter(node => node.getBoundingClientRect().height && !node.closest('.is-collapsed')).map(node => [node.dataset.sourceId,node.getBoundingClientRect()]));
+  const focused = document.activeElement, focusSelector = focused?.id ? `#${CSS.escape(focused.id)}` : focused?.dataset.paper ? `[data-paper="${CSS.escape(focused.dataset.paper)}"]` : focused?.dataset.sourceGroup ? `[data-source-group="${CSS.escape(focused.dataset.sourceGroup)}"]` : focused?.dataset.sourceCommand ? `[data-source-command="${CSS.escape(focused.dataset.sourceCommand)}"]${focused.dataset.id ? `[data-id="${CSS.escape(focused.dataset.id)}"]` : ''}` : null;
+  const restoreFocus = host.contains(focused);
   host.innerHTML = sourcesBodyHTML(); host.scrollTop = top;
   syncSourceCounters();
+  if (restoreFocus && focusSelector) host.querySelector(focusSelector)?.focus({preventScroll:true});
+  if (!(window.MethodAtlasSettings?.reducedMotion() || matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+    host.querySelectorAll('[data-source-id]').forEach(node => {
+      if (node.closest('.is-collapsed')) return;
+      const before = positions.get(node.dataset.sourceId), after = node.getBoundingClientRect();
+      if (before && (Math.abs(before.top-after.top)>1 || Math.abs(before.left-after.left)>1)) node.animate([{transform:`translate(${before.left-after.left}px,${before.top-after.top}px)`},{transform:'none'}],{duration:220,easing:'cubic-bezier(.16,1,.3,1)'});
+    });
+  }
 }
 
 // The conversation column: a search box, a new-chat button and the saved conversations, newest first.
@@ -923,25 +1528,27 @@ function taskMarker(status) {
 function markConversationRead() {
   if (!current || !conversation || shellOwnsPanels() || document.hidden) return;
   if (narrowWorkspace.matches && activePanel !== 'chat-panel') return;
-  const task = conversation.messages.map(message => message.task).filter(Boolean).at(-1);
+  const task = conversation.latest_task || conversation.messages.map(message => message.task).filter(Boolean).at(-1);
   const key = `chat-read:${current.id}:${conversation.id}`;
-  if (task?.status === 'succeeded' && localStorage.getItem(key) !== task.id) localStorage.setItem(key,task.id);
+  if (task?.status === 'succeeded' && (globalThis.MethodAtlasStorage?.local || localStorage).getItem(key) !== task.id) (globalThis.MethodAtlasStorage?.local || localStorage).setItem(key,task.id);
 }
 
 function conversationRowsHTML() {
-  const query = (document.getElementById('conversation-search')?.value || '').trim().toLowerCase();
+  const query = (window.MethodAtlasSearch?.listQuery('conversation') || '').trim().toLowerCase();
   const list = current.conversations.filter(item => !query || String(item.title).toLowerCase().includes(query));
   return list.map(item => {
     const tasks = item.messages.map(message => message.task).filter(Boolean);
-    const task = tasks.findLast(task => !finished(task.status)) || tasks.at(-1);
-    const status = task?.status === 'succeeded' && localStorage.getItem(`chat-read:${current.id}:${item.id}`) === task.id ? null : task?.status;
-    return `<button type="button" class="conversation-row${item.id === conversation?.id ? ' active' : ''}" data-action="conversation" data-id="${esc(item.id)}"${item.id === conversation?.id ? ' aria-current="true"' : ''}><span class="conversation-icon" aria-hidden="true">${icon('chat')}</span><span class="conversation-body"><strong>${esc(item.title || '新对话')}</strong></span>${taskMarker(item.id === conversation?.id && pending ? 'queued' : status)}</button>`;
+    const task = tasks.findLast(task => !finished(task.status)) || item.latest_task || tasks.at(-1);
+    const status = task?.status === 'succeeded' && (globalThis.MethodAtlasStorage?.local || localStorage).getItem(`chat-read:${current.id}:${item.id}`) === task.id ? null : task?.status;
+    return `<button type="button" class="conversation-row${item.id === conversation?.id ? ' active' : ''}" data-action="conversation" data-id="${esc(item.id)}"${item.id === conversation?.id ? ' aria-current="true"' : ''}><span class="conversation-icon" aria-hidden="true">${icon('chat')}</span><span class="conversation-body"><strong>${esc(item.title || '新对话')}</strong>${item.visibility === 'private' ? '<small>私人 · 仅自己可见</small>' : ''}</span>${taskMarker(item.id === conversation?.id && pending ? 'queued' : status)}</button>`;
   }).join('') || '<p class="empty-small">没有匹配的对话。</p>';
 }
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) { markConversationRead(); renderConversationRows(); }
+  if (!document.hidden && state?.collaboration && current && conversation && !pending) void refreshTask(activeTaskId,viewGeneration,current.id,conversation.id);
 });
+window.addEventListener('online', () => { if (state?.collaboration && current && conversation && !pending) void refreshTask(activeTaskId,viewGeneration,current.id,conversation.id); });
 
 function renderConversationRows() {
   const host = document.querySelector('.conversation-list');
@@ -960,9 +1567,9 @@ function renderChatList() {
   if (shellView !== 'chat') return;
   const host = document.getElementById('source-body');
   if (!host) return;
-  host.innerHTML = `<label class="chat-search">${icon('search')}<input id="conversation-search" type="search" placeholder="搜索对话..." aria-label="搜索对话" autocomplete="off"></label><button class="primary chat-new" data-action="new-chat">${icon('plus')}新建对话</button><div class="conversation-list">${conversationRowsHTML()}</div>`;
+  host.innerHTML = `<div class="chat-list-tools"><button class="primary chat-new" data-action="new-chat" data-search-background="conversation" ${window.MethodAtlasSearch?.listOpen('conversation')?'inert':''}>${icon('plus')}新建对话</button>${window.MethodAtlasSearch?.compact('conversation') || ''}</div>${state?.collaboration ? '<button type="button" class="pill chat-new" data-action="new-private-chat">新建私人探索</button>' : ''}<div class="conversation-list">${conversationRowsHTML()}</div>`;
   const heading = document.querySelector('#sources-panel .panel-head h2');
-  if (heading) heading.textContent = '对话';
+  if (heading) heading.textContent = '历史对话';
   const badge = document.querySelector('#sources-panel .panel-head .badge');
   if (badge) badge.textContent = current.conversations.length;
   syncSourceCounters();
@@ -980,17 +1587,12 @@ async function showPaper(id, page = 1, version = null, focus = null, valid = () 
     if (generation !== viewGeneration || current?.id !== projectId || request !== paperRequest || !valid() || focus?.previewCurrent && !focus.previewCurrent()) return;
     if (historyOpen) { historyOpen = false; renderHistory(); }
     if (shellView !== 'library') switchShellView('library');
-    const source = document.querySelector(`[data-source-id="${CSS.escape(id)}"]`);
-    const origin = source?.getBoundingClientRect();
-    detail = {paper, page, focus}; renderPaperViews(); saveWorkspaceState(); revealPanel('sources-panel');
-    const reader = document.querySelector('.reader-shell');
-    if ((!focus || focus.readingPosition) && origin?.width && reader && !(window.MethodAtlasSettings?.reducedMotion() || matchMedia('(prefers-reduced-motion: reduce)').matches)) {
-      const destination = reader.getBoundingClientRect();
-      reader.animate([
-        {transform:`translate(${origin.left-destination.left}px,${origin.top-destination.top}px) scale(${origin.width/destination.width},${origin.height/destination.height})`,opacity:.35},
-        {transform:'none',opacity:1}
-      ], {duration:420,easing:'cubic-bezier(.22,1,.36,1)'});
-      reader.style.transformOrigin = 'top left';
+    committedShellView = 'library'; previewingShell = false;
+    detail = {paper, page, focus}; renderPaperViews(); saveWorkspaceState(); revealPanel('chat-panel');
+    const reader = document.querySelector('.reader-stage');
+    if ((!focus || focus.readingPosition) && reader && !(window.MethodAtlasSettings?.reducedMotion() || matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+      // Keep the tools stationary while the selected document replaces the library.
+      reader.animate([{opacity:.55},{opacity:1}], {duration:180,easing:'cubic-bezier(.16,1,.3,1)'});
     }
   } catch (error) { if (generation === viewGeneration && current?.id === projectId) toast(error.message); }
 }
@@ -1010,6 +1612,77 @@ function renderDetail() {
   if (image) image.onload = () => host.querySelector('.focused')?.scrollIntoView({block:'center', behavior:'smooth'});
 }
 
+
+// One evidence preview for the workspace; the citation ID retains its source version.
+let citationPreview = null, citationHoverTimer, citationLeaveTimer;
+function closeCitationPreview() {
+  clearTimeout(citationHoverTimer); clearTimeout(citationLeaveTimer);
+  if (!citationPreview) return;
+  citationPreview.anchor.setAttribute('aria-expanded','false');
+  citationPreview.box.remove(); citationPreview = null;
+}
+async function previewCitation(anchor, pinned = false) {
+  clearTimeout(citationHoverTimer); clearTimeout(citationLeaveTimer);
+  if (citationPreview?.anchor === anchor && citationPreview.box.matches(':popover-open')) {
+    citationPreview.pinned ||= pinned;
+    if(pinned)citationPreview.box.focus();
+    return;
+  }
+  closeCitationPreview();
+  const project = current?.id, generation = viewGeneration;
+  const box = document.createElement('section');
+  box.className = 'citation-preview'; box.id = 'citation-preview';
+  box.setAttribute('popover','auto'); box.setAttribute('role','dialog'); box.setAttribute('aria-label','引用原文'); box.tabIndex = -1;
+  const preview = {anchor,box,pinned,project,generation,request:uid()}; citationPreview = preview;
+  anchor.setAttribute('aria-expanded','true'); anchor.setAttribute('aria-controls',box.id);
+  box.innerHTML = '<p role="status">正在读取引用…</p>';
+  document.body.append(box); box.showPopover();
+  const position = () => {
+    if(!anchor.isConnected)return closeCitationPreview();
+    const r=anchor.getBoundingClientRect(), q=box.getBoundingClientRect();
+    box.style.left=Math.max(12,Math.min(r.left,innerWidth-q.width-12))+'px';
+    box.style.top=Math.max(12,Math.min(r.bottom+8,innerHeight-q.height-12))+'px';
+  };
+  const leave = () => {clearTimeout(citationLeaveTimer);citationLeaveTimer=setTimeout(()=>{if(citationPreview===preview && !preview.pinned)closeCitationPreview();},180);};
+  box.addEventListener('pointerenter',()=>clearTimeout(citationLeaveTimer));box.addEventListener('pointerleave',leave);
+  box.addEventListener('toggle',()=>{if(!box.matches(':popover-open') && citationPreview===preview)closeCitationPreview();});
+  box.addEventListener('focusin',()=>{preview.pinned=true;});
+  position();if(pinned)box.focus();
+  try {
+    const c=await api(`/api/projects/${project}/citations/${encodeURIComponent(anchor.dataset.id)}`);
+    if(citationPreview!==preview || current?.id!==project || viewGeneration!==generation)return;
+    box.innerHTML=`<header><h3>${esc(c.title)}</h3><button type="button" class="icon" aria-label="关闭引用预览">${icon('close')}</button></header><blockquote>${esc(c.quote || '此引用未保存原文片段。')}</blockquote><footer><button type="button" data-citation-open>查看原文 ${icon('chevron')}</button><button type="button" data-citation-note ${c.quote?'':'disabled'}>保存为笔记</button></footer><p class="citation-preview-status" role="status"></p>`;
+    box.querySelector('header button').onclick=()=>{closeCitationPreview();anchor.focus();};
+    box.querySelector('[data-citation-open]').onclick=()=>{closeCitationPreview();openCitation(c.id);};
+    box.querySelector('[data-citation-note]').onclick=async event=>{
+      const button=event.currentTarget,status=box.querySelector('[role=status]');
+      if(button.disabled)return;button.disabled=true;preview.pinned=true;status.textContent='正在保存…';
+      const document=[{id:'quote',type:'quote',children:[{text:c.quote}]},{id:'source',type:'p',children:[{text:`来源：${c.title} · 第 ${c.page} 页 `},{type:'citation',citation_id:c.id,children:[{text:''}]},{text:''}]}];
+      try {
+        const saved=await api(`/api/projects/${project}/documents`,{method:'POST',body:JSON.stringify({request_id:preview.request,title:('引用笔记 · '+c.title).slice(0,300),document})});
+        status.textContent='已保存到右侧成果区。';button.textContent='已保存';
+        if(current?.id===project && viewGeneration===generation){const loaded=await api(`/api/projects/${project}`);if(current?.id===project && viewGeneration===generation){current=loaded;if(citationPreview===preview)await loadArtifact(saved.artifact_id);else renderOutput();}}
+      } catch(error) {status.textContent=error.message;button.disabled=false;}
+    };
+    position();
+  } catch(error) {if(citationPreview===preview){box.innerHTML=`<p role="status">${esc(error.message)}</p>`;position();}}
+}
+document.addEventListener('pointerover',event=>{
+  const anchor=event.target.closest('[data-action="citation"]');
+  if(!anchor || anchor.contains(event.relatedTarget) || event.pointerType==='touch' || citationPreview?.pinned)return;
+  clearTimeout(citationLeaveTimer);clearTimeout(citationHoverTimer);
+  citationHoverTimer=setTimeout(()=>previewCitation(anchor),250);
+});
+document.addEventListener('pointerout',event=>{
+  const anchor=event.target.closest('[data-action="citation"]');
+  if(!anchor || anchor.contains(event.relatedTarget))return;
+  clearTimeout(citationHoverTimer);clearTimeout(citationLeaveTimer);
+  citationLeaveTimer=setTimeout(()=>{if(citationPreview?.anchor===anchor && !citationPreview.pinned && !citationPreview.box.matches(':hover'))closeCitationPreview();},180);
+});
+window.addEventListener('resize',closeCitationPreview);
+document.addEventListener('scroll',event=>{if(citationPreview && !citationPreview.box.contains(event.target))closeCitationPreview();},true);
+document.addEventListener('click',event=>{if(!event.target.closest('[data-action="citation"],.citation-preview'))closeCitationPreview();},true);
+
 async function openCitation(id, previewCurrent = () => true) {
   const generation = viewGeneration, projectId = current?.id;
   try { const c = await api(`/api/projects/${projectId}/citations/${encodeURIComponent(id)}`); if (generation === viewGeneration && current?.id === projectId && previewCurrent()) await showPaper(c.paper_id,c.page,c.paper_version_id,{...c,previewCurrent}); }
@@ -1019,6 +1692,7 @@ async function openCitation(id, previewCurrent = () => true) {
 // The composer owns one round button: it sends, and while the agent is thinking it stops instead.
 // Typing a draft always turns it back into send, so the stop control never blocks the next message.
 const runningTask = () => (conversation?.messages || []).map(message => message.task).filter(task => task && !finished(task.status)).at(-1) || null;
+const stoppingTasks = new Set();
 function syncComposer(form = document.getElementById('chat-form')) {
   if (!form) return;
   const workbench = document.getElementById('skill-workbench');
@@ -1032,79 +1706,276 @@ function syncComposer(form = document.getElementById('chat-form')) {
   const mode = (pending || task) && !draft ? (task ? 'stop' : 'submitting') : 'send';
   const labels = {send:'发送任务', stop:'停止生成', submitting:'正在提交任务'};
   button.type = mode === 'send' ? 'submit' : 'button';
-  button.disabled = mode === 'submitting';
+  button.disabled = mode === 'submitting' || (mode === 'stop' && stoppingTasks.has(task.id));
   button.classList.toggle('stop', mode !== 'send');
   button.setAttribute('aria-label', labels[mode]);
   button.title = mode === 'send' ? '发送；有任务时自动调整方向' : labels[mode];
+  // 参考稿样式：发送按钮只保留图形，不放文字；语义由 aria-label / title 承担
   button.innerHTML = icon(mode === 'send' ? 'arrow' : 'stop');
   if (mode === 'stop') { button.dataset.action = 'stop'; button.dataset.control = 'stop'; button.dataset.id = task.id; }
   else { delete button.dataset.action; delete button.dataset.control; delete button.dataset.id; }
 }
 
+function appendChatPrompt(text) {
+  const input = document.getElementById('chat-input');
+  if (!input) return;
+  if (!input.value.includes(text)) input.value = [input.value, text].filter(Boolean).join('\n\n');
+  input.dispatchEvent(new Event('input', {bubbles:true}));
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
 function selectedFragments(conversationId = conversation?.id) {
-  try { const value=JSON.parse(localStorage.getItem(`selected-fragments:${conversationId}`)||'[]');return Array.isArray(value)?value:[]; } catch {return [];}
+  try { const value=JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(`selected-fragments:${conversationId}`)||'[]');return Array.isArray(value)?value:[]; } catch {return [];}
 }
 function saveSelectedFragments(fragments, conversationId = conversation.id) {
-  localStorage.setItem(`selected-fragments:${conversationId}`,JSON.stringify(fragments));
+  (globalThis.MethodAtlasStorage?.local || localStorage).setItem(`selected-fragments:${conversationId}`,JSON.stringify(fragments));
 }
 function fragmentCards(fragments, removable = false) {
   if(!fragments?.length)return '';
-  return `<details class="selected-fragments"><summary><span>${fragments.length} 个已选文本片段</span>${removable?'<button type="button" class="selected-fragments-remove" data-remove-all-fragments aria-label="移除已选文本片段">×</button>':''}</summary><div class="selected-fragment-list">${fragments.map((f,i)=>`<div class="selected-fragment"><div><small>${esc(f.title || '文档')}${f.version_no ? ` · v${f.version_no}` : ''}</small>${removable?`<button type="button" data-remove-fragment="${esc(f.id)}" aria-label="移除文本片段 ${i+1}">×</button>`:''}</div><blockquote>${esc(f.text)}</blockquote></div>`).join('')}</div></details>`;
+  return `<details class="selected-fragments"><summary><span>${fragments.length} 个已选文本片段</span>${removable?'<button type="button" class="selected-fragments-remove" data-remove-all-fragments aria-label="移除已选文本片段">×</button>':''}</summary><div class="selected-fragment-list">${fragments.map((f,i)=>`<div class="selected-fragment"><div><small>${esc(f.title || '文档')}${f.version_no ? ` · v${f.version_no}` : ''}</small>${removable?`<button type="button" data-remove-fragment="${esc(f.id)}" aria-label="移除文本片段 ${i+1}">×</button>`:''}</div><blockquote>${esc(f.text)}</blockquote>${f.truncated?'<small>已附内容摘录，可按来源版本回读全文。</small>':''}${f.notes?.length ? `<div class="selected-fragment-notes"><small>个人批注</small>${f.notes.map(note=>`<p>第 ${note.page} 页：${esc(note.comment)}</p>`).join('')}</div>` : ''}</div>`).join('')}</div></details>`;
 }
 function addSelectedFragment(fragment) {
   const fragments=selectedFragments();
-  if(fragments.length>=20||fragments.reduce((n,f)=>n+f.text.length,fragment.text.length)>20000)throw Error('最多添加20个片段，总计20000字符');
+  if(fragments.length>=20||[...fragments,fragment].reduce((n,f)=>n+f.text.length+(f.notes||[]).reduce((sum,note)=>sum+note.comment.length,0),0)>20000)throw Error('最多添加20个片段，总计20000字符');
   saveSelectedFragments([...fragments,fragment]);
   renderChat();
   document.getElementById('chat-input')?.focus({preventScroll:true});
 }
 
 function composer() {
-  return `<form class="composer" id="chat-form" aria-busy="false"><div id="selected-fragment-draft">${fragmentCards(selectedFragments(),true)}</div><label class="sr-only" for="chat-input">给 Agent 的问题</label><textarea id="chat-input" placeholder="提问或发送新的要求">${esc(localStorage.getItem(`draft:${conversation.id}`) || '')}</textarea><div class="composer-bottom"><div class="composer-tools"><button type="button" class="workbench-trigger" aria-label="Skill 工作台" title="Skill 工作台" data-action="skill-workbench" popovertarget="skill-workbench">${icon('spark')}<span>Skill 工作台</span></button></div>${window.MethodAtlasSettings?.controls() || ''}<div class="row"><button class="send-button" type="submit" aria-label="发送任务" title="发送；有任务时自动调整方向">${icon('arrow')}</button></div></div></form>`;
+  return `<form class="composer" id="chat-form" aria-busy="false"><div id="selected-fragment-draft">${fragmentCards(selectedFragments(),true)}</div><label class="sr-only" for="chat-input">给 Agent 的问题</label><textarea id="chat-input" placeholder="你想研究什么？">${esc((globalThis.MethodAtlasStorage?.local || localStorage).getItem(`draft:${conversation.id}`) || '')}</textarea><div class="composer-bottom"><div class="composer-tools"><button type="button" class="workbench-trigger" aria-label="Skill 工作台" title="Skill 工作台" data-action="skill-workbench" popovertarget="skill-workbench">${icon('plus')}<span class="sr-only">Skill 工作台</span></button></div>${window.MethodAtlasSettings?.controls() || ''}<div class="row"><button class="send-button" type="submit" aria-label="发送任务" title="发送；有任务时自动调整方向">${icon('arrow')}</button></div></div></form>`;
 }
 
 // Keep complete backend answers readable immediately; only new message containers fade in.
 const copiedAnswers = new Set();
+const savingAnswers = new Set(), savedAnswers = new Map();
+const answerNoteKey = id => `answer-note:${current.id}:${id}`;
+function savedAnswer(id) {
+  const key = answerNoteKey(id);
+  try { return savedAnswers.get(key) || (globalThis.MethodAtlasStorage?.local || localStorage).getItem(key); } catch { return savedAnswers.get(key); }
+}
+function answerActions(id) {
+  const saving = savingAnswers.has(answerNoteKey(id)), saved = savedAnswer(id);
+  const label = saving ? '正在保存…' : saved ? '打开笔记' : '保存为笔记';
+  return `<div class="answer-actions" role="group" aria-label="回答操作"><button type="button" class="answer-save" data-action="save-answer" data-id="${esc(id)}" aria-label="${label}" ${saving ? 'disabled aria-busy="true"' : ''}>${icon(saved ? 'check' : 'pin')}<span>${label}</span></button>${copyAnswerButton(id)}</div>`;
+}
 function copyAnswerButton(id) {
   const copied = copiedAnswers.has(id);
-  return `<button type="button" class="answer-copy" data-action="copy-answer" data-id="${esc(id)}" aria-label="${copied ? '已复制' : '复制回答'}">${icon(copied ? 'check' : 'copy')}<span>${copied ? '已复制' : '复制'}</span></button>`;
+  return `<button type="button" class="answer-copy" data-action="copy-answer" data-id="${esc(id)}" aria-label="${copied ? '已复制' : '复制回答'}">${icon(copied ? 'check' : 'copy')}</button>`;
+}
+function answerNoteDocument(message) {
+  const nodes = message.text.split(/\n+/).filter(line => line.trim()).map((line,index) => {
+    const heading = line.match(/^(#{1,3})\s+(.*)/), template = document.createElement('template');
+    template.innerHTML = renderAnswerInlineText(heading ? heading[2] : line,message.task);
+    template.content.querySelector('.answer-sources')?.remove();
+    const read = (node,bold=false) => node.nodeType === Node.TEXT_NODE ? [{text:node.textContent,...(bold ? {bold:true} : {})}]
+      : node.dataset?.action === 'citation' ? [{type:'citation',citation_id:node.dataset.id,children:[{text:''}]}]
+      : [...node.childNodes].flatMap(child => read(child,bold || node.tagName === 'STRONG'));
+    const children = [...template.content.childNodes].flatMap(node => read(node));
+    return {id:`answer-${index}`,type:heading ? `h${heading[1].length}` : 'p',children:children.length ? children : [{text:''}]};
+  });
+  const sources = document.createElement('template');
+  sources.innerHTML = renderAnswerInlineText(message.text,message.task);
+  const citations = [...sources.content.querySelectorAll('.answer-sources [data-action=citation]')];
+  if (citations.length) nodes.push({id:'answer-sources',type:'p',children:[{text:'本次读取的原文（未标注到具体句子）：'},...citations.map(node=>({type:'citation',citation_id:node.dataset.id,children:[{text:''}]}))]});
+  return nodes;
+}
+async function saveAnswer(target) {
+  const id = target.dataset.id, key = answerNoteKey(id), saved = savedAnswer(id);
+  if (savingAnswers.has(key)) return;
+  if (saved) { await loadArtifact(saved); return; }
+  const message = conversation.messages.find(message => message.id === id && message.role !== 'user');
+  if (!message?.text.trim()) return;
+  const projectId = current.id, conversationId = conversation.id, generation = viewGeneration;
+  savingAnswers.add(key); target.disabled = true; target.setAttribute('aria-busy','true'); target.setAttribute('aria-label','正在保存…'); target.innerHTML = icon('pin') + '<span>正在保存…</span>';
+  try {
+    const result = await api(`/api/projects/${projectId}/documents`,{method:'POST',body:JSON.stringify({request_id:`answer-note:${id}`,title:message.text.replace(/^#+\s*/,'').split('\n').find(line=>line.trim())?.slice(0,80) || '对话笔记',document:answerNoteDocument(message)})});
+    savedAnswers.set(key,result.artifact_id);
+    try { (globalThis.MethodAtlasStorage?.local || localStorage).setItem(key,result.artifact_id); } catch { /* The saved note remains available in the project. */ }
+    if (isCurrentView(generation,projectId,conversationId)) {
+      const latest = await api(`/api/projects/${projectId}`);
+      if (isCurrentView(generation,projectId,conversationId)) { current = latest; renderOutput(); toast('已保存为笔记，可点击打开。'); }
+    }
+  } catch (error) { if (isCurrentView(generation,projectId,conversationId)) toast(savedAnswers.has(key) ? '笔记已保存，成果列表暂未刷新；可点击打开笔记。' : error.message); }
+  finally {
+    savingAnswers.delete(key);
+    if (isCurrentView(generation,projectId,conversationId)) {
+      const focused = document.activeElement === target;
+      renderChat();
+      if (focused) document.querySelector(`[data-action="save-answer"][data-id="${CSS.escape(id)}"]`)?.focus({preventScroll:true});
+    }
+  }
 }
 async function copyAnswer(target) {
   const id = target.dataset.id;
   const node = document.querySelector(`[data-answer="${CSS.escape(id)}"]`);
   if (!node || copiedAnswers.has(id)) return;
   try {
-    await navigator.clipboard.writeText(node.innerText);
+    const message = conversation.messages.find(message => message.id === id);
+    if (!message) return;
+    // Preserve the original plain-text payload when the visible answer uses block formatting.
+    const original = document.createElement('p');
+    original.className = 'answer-text answer-copy-text';
+    original.setAttribute('aria-hidden','true'); original.inert = true;
+    original.style.cssText = 'position:fixed;left:-10000px;top:0;white-space:pre-wrap;pointer-events:none';
+    original.style.width = `${node.clientWidth}px`;
+    original.innerHTML = renderAnswerInlineText(chatAnswerText(message),message.task);
+    let text;
+    try { node.parentElement.append(original); text = original.innerText; }
+    finally { original.remove(); }
+    await navigator.clipboard.writeText(text);
     copiedAnswers.add(id);
-    if (target.isConnected) { target.innerHTML = icon('check') + '<span>已复制</span>'; target.setAttribute('aria-label','已复制'); }
+    if (target.isConnected) { target.innerHTML = icon('check'); target.setAttribute('aria-label','已复制'); }
     toast('回答已复制');
     setTimeout(() => {
       copiedAnswers.delete(id);
       const button = document.querySelector(`[data-action="copy-answer"][data-id="${CSS.escape(id)}"]`);
-      if (button) { button.innerHTML = icon('copy') + '<span>复制</span>'; button.setAttribute('aria-label','复制回答'); }
+      if (button) { button.innerHTML = icon('copy'); button.setAttribute('aria-label','复制回答'); }
     },1800);
   } catch { toast('复制失败，请选择回答文字后复制。'); }
 }
 
+function answerTextContext(raw, task) {
+  const citations = task?.citations || [];
+  const numbers = new Map([...new Set(citations.map(c=>c.id))].map((id,index)=>[id,index+1]));
+  // Older answers may quote evidence verbatim but omit the model's citation marker.
+  // Only exact saved excerpts get a sentence-level link; reading a source is not proof of a claim.
+  const normalize = text => text.replace(/\s+/g,' ').trim();
+  raw = raw.replace(/^>\s*([^\n]+)$/gm,(line,quote) => {
+    if(line.includes('[cite:'))return line;
+    const excerpt=normalize(quote);
+    if(excerpt.length<12)return line;
+    const matches=citations.filter(c=>c.quote && normalize(c.quote).includes(excerpt));
+    return line+matches.map(c=>` [cite:${c.id}]`).join('');
+  });
+  const used=new Set([...raw.matchAll(/\[cite:([^\]]+)\]/g)].map(match=>match[1]));
+  const unlinked=[...new Map(citations.filter(c=>c.id && !used.has(c.id)).map(c=>[c.id,c])).values()];
+  // Downloads come from persisted file cards, never from model-authored URLs.
+  raw = raw.replace(/\[[^\]\n]*\]\((?:https?:\/\/[^/\s)]+)?\/api\/projects\/[^\s)]+\/download(?:[?#][^\s)]*)?\)/g,'')
+    .replace(/(?:https?:\/\/[^/\s)]+)?\/api\/projects\/[^\s)]+\/download(?:[?#][^\s)]*)?/g,'');
+  return {raw,task,citations,numbers,unlinked};
+}
+function renderAnswerInline(raw, {task,citations,numbers}) {
+  return esc(raw).replace(/^#{1,6}\s+(.+)$/gm,'<strong>$1</strong>').replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/\[cite:([^\]]+)\]/g, (match,id) => { const c = citations.find(c => c.id === id); return c ? citationLink(c,'citation-inline',numbers.get(c.id)) : match; }).replace(/\[([^\]]+)\]\((\/api\/projects\/[^)]+\/download)\)/g,(match,label,url) => task?.files?.some(f => fileUrl(f.artifact_id,f.version_id) === url) ? '' : match);
+}
+function renderAnswerSources({unlinked,numbers}) {
+  return unlinked.length?`<span class="answer-sources"><span class="answer-sources-label">本次读取的原文 <span>未标注到具体句子</span></span><span class="answer-source-links">${unlinked.map(c=>citationLink(c,'citation-inline',numbers.get(c.id))).join('')}</span></span>`:'';
+}
+// Notes and copied text keep the existing inline representation and source appendix.
+function renderAnswerInlineText(raw, task) {
+  const context = answerTextContext(raw,task);
+  return renderAnswerInline(context.raw,context) + renderAnswerSources(context);
+}
+function answerTableRow(line) {
+  const value = line.trim(), cells = [];
+  let cell = '', pipes = 0, codeTicks = 0, leading = false, trailing = false;
+  for (let index=0;index<value.length;index++) {
+    const char = value[index];
+    if (char === '\\' && (value[index+1] === '|' || value[index+1] === '\\')) {
+      cell += value[index+1] === '|' ? '|' : '\\\\'; index++; trailing = false;
+    } else if (char === '`') {
+      let end = index+1;
+      while (value[end] === '`') end++;
+      const count = end-index;
+      if (!codeTicks) codeTicks = count; else if (codeTicks === count) codeTicks = 0;
+      cell += value.slice(index,end); index = end-1; trailing = false;
+    } else if (char === '|' && !codeTicks) {
+      leading ||= index === 0; cells.push(cell.trim()); cell = ''; pipes++; trailing = true;
+    } else { cell += char; trailing = false; }
+  }
+  if (!pipes) return null;
+  cells.push(cell.trim());
+  if (leading) cells.shift();
+  if (trailing) cells.pop();
+  return cells;
+}
+function answerTableStart(lines, index) {
+  const header = answerTableRow(lines[index]), separator = answerTableRow(lines[index+1] || '');
+  return header?.length && separator?.length === header.length && separator.every(cell => /^:?-{3,}:?$/.test(cell))
+    ? {header,align:separator.map(cell => cell.startsWith(':') && cell.endsWith(':') ? 'center' : cell.endsWith(':') ? 'right' : 'left')}
+    : null;
+}
+function answerListItem(line) {
+  const match = line.match(/^ {0,3}(?:([-+*])|([0-9]{1,9})[.)])\s+(.+)$/);
+  return match ? {type:match[1] ? 'ul' : 'ol',start:match[2] ? Number(match[2]) : null,text:match[3]} : null;
+}
 function renderAnswerText(raw, task) {
-  return esc(raw).replace(/^#{1,6}\s+(.+)$/gm,'<strong>$1</strong>').replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/\[cite:([^\]]+)\]/g, (match,id) => { const c = task?.citations.find(c => c.id === id); return c ? citationLink(c,'citation-inline') : match; }).replace(/\[([^\]]+)\]\((\/api\/projects\/[^)]+\/download)\)/g,(match,label,url) => task?.files.some(f => fileUrl(f.artifact_id,f.version_id) === url) ? '' : match);
+  const context = answerTextContext(raw,task), lines = context.raw.replace(/\r\n?/g,'\n').split('\n'), blocks = [];
+  const inline = text => renderAnswerInline(text,context);
+  for (let index=0;index<lines.length;) {
+    if (!lines[index].trim()) { index++; continue; }
+    // Keep fenced examples literal rather than interpreting their table/list syntax.
+    const fence = lines[index].match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fence) {
+      const paragraph = [lines[index++]];
+      while (index<lines.length) {
+        const line = lines[index++]; paragraph.push(line);
+        const close = line.match(/^ {0,3}(`{3,}|~{3,})\s*$/);
+        if (close && close[1][0] === fence[1][0] && close[1].length >= fence[1].length) break;
+      }
+      blocks.push(`<p>${inline(paragraph.join('\n'))}</p>`); continue;
+    }
+    const table = answerTableStart(lines,index);
+    if (table) {
+      index += 2;
+      const rows = [];
+      while (index<lines.length) {
+        const row = answerTableRow(lines[index]);
+        if (!row || row.length !== table.header.length) break;
+        rows.push(row); index++;
+      }
+      const cells = (row,tag) => row.map((cell,column) => `<${tag}${tag === 'th' ? ' scope="col"' : ''} class="answer-align-${table.align[column]}">${inline(cell)}</${tag}>`).join('');
+      blocks.push(`<div class="answer-table-scroll" tabindex="0" role="region" aria-label="回答表格"><table><thead><tr>${cells(table.header,'th')}</tr></thead><tbody>${rows.map(row=>`<tr>${cells(row,'td')}</tr>`).join('')}</tbody></table></div>`); continue;
+    }
+    const list = answerListItem(lines[index]);
+    if (list) {
+      const items = [];
+      while (index<lines.length) {
+        const item = answerListItem(lines[index]);
+        if (!item || item.type !== list.type || answerTableStart(lines,index)) break;
+        items.push(`<li>${inline(item.text)}</li>`); index++;
+      }
+      blocks.push(`<${list.type}${list.type === 'ol' ? ` start="${list.start}"` : ''}>${items.join('')}</${list.type}>`); continue;
+    }
+    const paragraph = [lines[index++]];
+    while (index<lines.length && lines[index].trim() && !answerTableStart(lines,index) && !answerListItem(lines[index]) && !/^ {0,3}(?:`{3,}|~{3,})/.test(lines[index])) paragraph.push(lines[index++]);
+    blocks.push(`<p>${inline(paragraph.join('\n'))}</p>`);
+  }
+  return blocks.join('') + renderAnswerSources(context);
+}
+function chatAnswerText(message) {
+  return message.task?.refs?.index_search || hasPaperResults(message.task)
+    ? message.text.replace(/来源查询失败[：:][\s\S]*?(?:不代表没有相关论文。|$)/g,'') : message.text;
 }
 
 function hasPaperResults(task) {
   return task?.waits?.some(w => w.payload.kind === 'papers' && !w.payload.draft);
 }
 
-function renderChat(forceBottom = false) {
-  if (shellOwnsPanels()) return;
+const processVisibility = new IntersectionObserver(entries => entries.forEach(({target,isIntersecting}) => {
+  target.dataset.visible = String(isIntersecting);
+  target.style.animationPlayState = isIntersecting && !document.hidden ? 'running' : 'paused';
+}));
+document.addEventListener('visibilitychange', () => document.querySelectorAll('.process-indicator').forEach(node => {
+  node.style.animationPlayState = node.dataset.visible === 'true' && !document.hidden ? 'running' : 'paused';
+}));
+
+function renderChat(forceBottom = false, history = false) {
+  if(window.MethodAtlasAI?.loading())return;
+  if (shellOwnsPanels() && !window.MethodAtlasAI?.isOpen()) return;
+  window.MethodAtlasAI?.mainPlaceholder();
+  const host = window.MethodAtlasAI?.host() || document.getElementById('chat-body');
   markConversationRead();
-  enterBatch = 0;
   const previousForm = document.getElementById('chat-form');
   const inputFocus = document.activeElement?.id === 'chat-input';
   const caret = inputFocus ? [document.activeElement.selectionStart,document.activeElement.selectionEnd] : null;
   const previousLog = document.getElementById('chat-log');
+  const previousRows = new Set([...previousLog?.querySelectorAll('[data-process-row]') || []].map(node => node.dataset.processRow));
+  const motionTimes = new Map([...previousLog?.querySelectorAll('.process-indicator') || []].map(node => [node.closest('details').dataset.disclosure, {kind:node.dataset.motion,time:node.getAnimations()[0]?.currentTime}]));
   const scrollTop = previousLog?.scrollTop || 0;
   const followBottom = forceBottom || !previousLog || previousLog.scrollHeight - previousLog.clientHeight - scrollTop < 4;
-  // Preserve open blocks being read; default-open progress is not a user preference.
+  // Preserve blocks being read, including across task completion.
   previousLog?.querySelectorAll('details[open][data-disclosure]').forEach(node => {
     const rect = node.getBoundingClientRect(), viewport = previousLog.getBoundingClientRect();
     if (node.contains(document.activeElement) || (!followBottom && rect.bottom > viewport.top && rect.top < viewport.bottom)) disclosureState.set(node.dataset.disclosure,true);
@@ -1112,21 +1983,31 @@ function renderChat(forceBottom = false) {
   const focusedKey = document.activeElement?.tagName === 'SUMMARY' ? document.activeElement.parentElement.dataset.disclosure : null;
   const started = conversation.messages.length > 0;
   const previousIds = new Set([...previousLog?.querySelectorAll('[data-message-id]') || []].map(node => node.dataset.messageId));
+  const answeredTasks = new Set(conversation.messages.filter(message => message.role !== 'user').map(message => message.task?.id).filter(Boolean));
   const messages = conversation.messages.map(message => {
     const task = message.task;
-    const fresh = previousForm && message.id && !previousIds.has(message.id) ? ' message-enter' : '';
-    if (message.role === 'user') return `<div class="message user${fresh}" data-message-id="${esc(message.id || 'pending')}">${fragmentCards(task?.refs?.selected_fragments || message.selected_fragments)}${esc(message.text)}</div>${task ? taskControls(task) : ''}`;
-    const answer = task?.refs?.index_search || hasPaperResults(task)
-      ? message.text.replace(/来源查询失败[：:][\s\S]*?(?:不代表没有相关论文。|$)/g,'') : message.text;
-    return `<div class="message agent${fresh}" data-message-id="${esc(message.id)}">${hasPaperResults(task) ? '' : `<div class="agent-name">${icon('spark')}MethodAtlas</div>`}${['failed','interrupted','stopped'].includes(task?.status) ? '' : renderProgress(task)}<p class="answer-text" data-answer="${esc(message.id)}">${renderAnswerText(answer, task)}</p>${answer ? copyAnswerButton(message.id) : ''}${(task?.status === 'succeeded' ? task.citations || [] : []).filter(c => c.kind === 'figure').map(renderFigureInsight).join('')}${task?.status === 'succeeded' && task?.files?.length ? `<div class="file-list">${task.files.map(f => `<button class="file-card" data-action="file" data-id="${esc(f.artifact_id)}" data-version="${esc(f.version_id)}">${icon('output')}<span class="file-title">${esc(f.title)}</span><span class="file-version">${esc(artifactKindLabel(f))} · v${f.version_no}</span></button>`).join('')}</div>` : ''}</div>`;
+    const fresh = !history && previousForm && message.id && !previousIds.has(message.id) ? ' message-enter' : '';
+    if (message.role === 'user') return `<div class="message user${fresh}" data-message-id="${esc(message.id || 'pending')}">${fragmentCards(task?.refs ? [...(task.refs.selected_fragments || []),...(task.refs.context_references || [])] : message.selected_fragments)}${esc(message.text)}</div>${task && conversation.visibility !== 'private' && task.kind !== 'skill' ? window.MethodAtlasCollaboration?.relatedButton('run',task.id) || '' : ''}${task && !answeredTasks.has(task.id) ? `<div class="message agent${!finished(task.status) ? ' working' : ''}"><div class="agent-name">${icon('spark')}MethodAtlas</div>${renderProgress(task,!finished(task.status))}${taskControls(task)}</div>` : ''}`;
+    const answer = chatAnswerText(message);
+    return `<div class="message agent${fresh}" data-message-id="${esc(message.id)}">${hasPaperResults(task) ? '' : `<div class="agent-name">${icon('spark')}MethodAtlas</div>`}${renderProgress(task)}${taskControls(task || {})}<div class="answer-text" data-answer="${esc(message.id)}">${renderAnswerText(answer, task)}</div>${(task?.status === 'succeeded' ? task.citations || [] : []).filter(c => c.kind === 'figure').map(renderFigureInsight).join('')}${task?.status === 'succeeded' && task?.files?.length ? `<div class="file-list">${task.files.map(f => `<button class="file-card" data-action="file" data-id="${esc(f.artifact_id)}" data-version="${esc(f.version_id)}">${icon('output')}<span class="file-title">${esc(f.title)}</span><span class="file-version">${esc(artifactKindLabel(f))} · v${f.version_no}</span></button>`).join('')}</div>` : ''}${task?.refs?.progress_proposal?.id ? `<button type="button" data-diary="proposal" data-day="${esc(task.refs.progress_proposal.day)}">查看修订提案</button>` : ''}${answer ? answerActions(message.id) : ''}${state?.collaboration && conversation.visibility === 'private' && task?.status === 'succeeded' ? `<button type="button" class="answer-copy" data-action="publish-answer" data-id="${esc(message.id)}">发布为共享笔记</button>` : ''}</div>`;
   }).join('');
-  const working = pending ? `<div class="message agent working"><div class="agent-name">${icon('spark')}MethodAtlas</div>${renderProgress(liveTask, true)}</div>` : '';
+  const workingTask = conversation.messages.filter(message => message.role === 'user').map(message => message.task).find(task => task && !finished(task.status));
+  const working = pending && !workingTask ? `<div class="message agent working"><div class="agent-name">${icon('spark')}MethodAtlas</div>${renderProgress(workingTask || liveTask, true)}</div>` : '';
   // The composer dock starts centred like a welcome screen and drops to the bottom once the conversation begins.
   const dropIn = started && lastStarted === false ? ' dock-enter' : '';
   lastStarted = started;
-  const dock = `<div class="composer-dock${dropIn}">${queuePanel()}${composer()}</div>`;
-  document.getElementById('chat-body').innerHTML = started ? `<div class="chat-body started"><div class="chat-log" id="chat-log">${messages}${working}${connectionNotice()}</div>${dock}</div>` : `<div class="chat-body"><div class="welcome"><div class="welcome-intro"><div class="welcome-emoji" aria-hidden="true">${icon('spark')}</div><h1>让我们开始梳理这个项目…</h1><p class="welcome-ask">您希望此项目帮助您做什么？</p></div>${dock}</div></div>`;
+  const dock = `<div class="composer-dock${dropIn}">${conversation.visibility === 'private' ? '<p class="empty-small">私人探索 · 仅自己可见</p>' : ''}${queuePanel()}${composer()}</div>`;
+  host.innerHTML = started ? `<div class="chat-body started"><div class="chat-log" id="chat-log">${conversation.has_more ? `<button type="button" class="secondary" data-action="older-messages" ${historyLoading?.generation === viewGeneration ? 'disabled aria-busy="true"' : ''}>${historyLoading?.generation === viewGeneration ? '加载中…' : '加载更早消息'}</button>` : ''}${messages}${working}${connectionNotice()}</div>${dock}</div>` : `<div class="chat-body"><div class="welcome"><div class="welcome-intro"><h1>从一个研究问题开始</h1><p class="welcome-ask">结合项目文献，比较方法、梳理脉络、形成成果</p></div>${dock}<nav class="research-shortcuts" aria-label="研究工具">${['lit-review','map','evolution','graph','experiment-plan','result-to-claim'].map(key => `<button type="button" data-action="task" data-value="${key}" title="${esc(taskInfo[key].description)}" ${pending ? 'disabled' : ''}>${researchIcon(key)}<span>${esc(taskInfo[key].title)}</span></button>`).join('')}<button type="button" data-skills-open>${researchIcon('skills')}<span>我的技能</span></button></nav><p class="research-hint">选择工具后可编辑要求，发送时开始研究</p></div></div>`;
   if (previousForm) document.getElementById('chat-form').replaceWith(previousForm);
+  processVisibility.disconnect();
+  document.querySelectorAll('.process-indicator').forEach(node => {
+    const previous = motionTimes.get(node.closest('details').dataset.disclosure), animation = node.getAnimations()[0];
+    if (animation && previous?.kind === node.dataset.motion && previous.time != null) animation.currentTime = previous.time;
+    processVisibility.observe(node);
+  });
+  document.querySelectorAll('.execution-record[open][data-running=true] [data-process-row]').forEach(node => {
+    if (!previousRows.has(node.dataset.processRow)) node.classList.add('enter');
+  });
   const fragmentHost=document.getElementById('selected-fragment-draft'), fragments=selectedFragments(), fragmentSignature=JSON.stringify(fragments);
   if(fragmentHost && fragmentHost.dataset.signature!==fragmentSignature){
     const open=fragmentHost.querySelector('details')?.open;
@@ -1134,6 +2015,7 @@ function renderChat(forceBottom = false) {
     if(open && fragmentHost.firstElementChild)fragmentHost.firstElementChild.open=true;
   }
   syncComposer(document.getElementById('chat-form'));
+  window.MethodAtlasAI?.sync();
   renderConversationRows();
   const log = document.getElementById('chat-log'); if (log) log.scrollTop = followBottom ? log.scrollHeight : scrollTop;
   if (focusedKey) [...document.querySelectorAll('[data-disclosure]')].find(node => node.dataset.disclosure === focusedKey)?.querySelector('summary')?.focus({preventScroll:true});
@@ -1163,11 +2045,14 @@ function paperWait(w, task, button) {
   if (recommendations) candidates.sort((a,b) => recommendations.findIndex(p => p.candidate_id === a.id) - recommendations.findIndex(p => p.candidate_id === b.id));
   const entries = candidates.map(c => {
     const p = c.preferred;
+    const year = String(p.published || '').match(/^\d{4}/)?.[0] || '年份未知';
+    const version = ({publishedVersion:'正式发表版',acceptedVersion:'录用稿',submittedVersion:'投稿稿'})[p.source_version]
+      || (p.source === 'arxiv' || p.publication_type === 'preprint' ? '预印本' : '版本未标明');
     const reason = recommendations?.find(p => p.candidate_id === c.id)?.reason || c.reasons?.[0]?.text || '检索命中；尚无推荐理由，请打开论文核对。';
     const title = /^https?:\/\//i.test(p.url || '')
       ? `<a class="candidate-title" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="${esc(p.title)}">${esc(p.title)}</a>`
       : `<span class="candidate-title" title="${esc(p.title)}">${esc(p.title)}</span>`;
-    return `<li class="candidate-item"><div class="candidate-row">${title}${button('collect-papers','收录',`data-wait="${esc(w.id)}" data-candidate="${esc(c.id)}" aria-label="收录：${esc(p.title)}"`)}</div><p class="candidate-reason">${esc(reason)}</p></li>`;
+    return `<li class="candidate-item"><div class="candidate-row">${title}${button('collect-papers','收录',`data-wait="${esc(w.id)}" data-candidate="${esc(c.id)}" aria-label="收录：${esc(p.title)}"`)}</div><p class="paper-meta">${esc(year)} · ${esc(version)}</p><p class="candidate-reason">${esc(reason)}</p></li>`;
   }).join('');
   return `<section class="paper-recommendations" data-paper-wait="${esc(w.id)}" aria-label="推荐论文">
     <p class="search-summary">${esc(w.payload.recommendation?.summary || `围绕「${w.payload.query}」检索了相关论文，可打开标题查看来源。`)}</p>
@@ -1182,10 +2067,10 @@ function connectionNotice() {
 function taskControls(task) {
   if (['failed','interrupted','stopped'].includes(task.status)) return '';
   const waits = (task.waits || []).filter(w => !w.response || w.payload.kind === 'papers');
-  if (task.status === 'succeeded' && !waits.length) return '';
+  if (task.status !== 'waiting' && !waits.length) return '';
   const button = (action,label,extra='') => `<button type="button" data-action="control" data-control="${action}" data-id="${esc(task.id)}" ${extra}>${label}</button>`;
   const labels = {queued:'正在准备回答…',routing:'正在回答…',running:'正在处理…',waiting:'等待确认'};
-  return `<div class="message agent">${task.status !== 'succeeded' && !waits.some(w => w.payload.kind === 'papers') ? `<p role="status">${labels[task.status] || ''}</p>` : ''}${waits.map(w => w.payload.kind === 'papers' ? paperWait(w,task,button) : `<div><p>${esc(w.payload.title || '')}：${esc(w.payload.description || '')}</p>${button('confirm','确认',`data-wait="${esc(w.id)}" data-accepted="true"`)}${button('confirm','不采纳',`data-wait="${esc(w.id)}" data-accepted="false"`)}</div>`).join('')}</div>`;
+  return `<div class="task-results">${task.status !== 'succeeded' && !waits.some(w => w.payload.kind === 'papers') ? `<p role="status">${labels[task.status] || ''}</p>` : ''}${waits.map(w => w.payload.kind === 'papers' ? paperWait(w,task,button) : `<div><p>${esc(w.payload.title || '')}：${esc(w.payload.description || '')}</p>${button('confirm','确认',`data-wait="${esc(w.id)}" data-accepted="true"`)}${button('confirm','不采纳',`data-wait="${esc(w.id)}" data-accepted="false"`)}</div>`).join('')}</div>`;
 }
 
 async function controlTask(target) {
@@ -1206,27 +2091,31 @@ async function controlTask(target) {
 
 // The composer stop button: same endpoint the message-stream control used, now reachable without scrolling the log.
 async function stopTask(taskId) {
-  if (!taskId || !current || !conversation) return;
+  if (!taskId || !current || !conversation || stoppingTasks.has(taskId)) return;
+  stoppingTasks.add(taskId);
   const generation = viewGeneration, projectId = current.id, conversationId = conversation.id;
   const button = document.querySelector('.send-button[data-action="stop"]');
   if (button) button.disabled = true;
   try {
     await api(`/api/projects/${projectId}/conversations/${conversationId}/tasks/${taskId}/stop`,{method:'POST',body:'{}'});
     await refreshTask(taskId,generation,projectId,conversationId);
-  } catch (error) { toast(error.message); }
-  finally { syncComposer(); }
+  } catch (error) { if(isCurrentView(generation,projectId,conversationId))toast(error.message); }
+  finally { stoppingTasks.delete(taskId); syncComposer(); }
 }
 
 function renderOutput() {
   const host = document.getElementById('output-body');
   if (!host) return;
-  const version = artifact && (artifact.versions.find(v => v.id === versionId) || artifact.versions.at(-1));
+  hideTextSelection();
+  const version = artifact && (artifact.viewed_snapshot && artifact.viewed_snapshot.id === versionId ? artifact.viewed_snapshot : artifact.versions.find(v => v.id === versionId) || artifact.versions.at(-1));
   syncPanelLayout();
-  const nextKey = version ? `${artifact.id}:${version.id}` : null;
+  const draftView = version?.kind === 'manuscript' && (!versionId || versionId === 'draft');
+  const nextKey = version ? `${artifact.id}:${draftView ? 'draft' : version.id}` : null;
   if (nextKey && nextKey === outputKey) return;
   window.MethodAtlasWriting?.unmount();
   outputKey = nextKey;
-  if (version) versionId = version.id;
+  if (version) versionId = draftView ? 'draft' : version.id;
+  window.MethodAtlasComments?.sync(current?.id, artifact?.id, versionId);
   saveWorkspaceState();
   document.querySelector('.studio-back').hidden = !version;
   panelHeading('output-panel',version ? artifactKindLabel(version) : '成果',version ? '成果' : null,'artifact-list');
@@ -1240,17 +2129,24 @@ function renderOutput() {
   }
   const downloadMenu = downloads.length ? `<details class="download-menu"><summary class="icon" aria-label="下载" title="下载">${icon('download')}</summary><div>${downloads.join('')}</div></details>` : '';
   document.getElementById('studio-tools').innerHTML = version ? `<label class="version-picker"><span class="sr-only">历史版本</span><select id="version-select" title="${esc(version.title)}">${artifact.versions.map(v => `<option value="${v.id}" ${v.id === version.id ? 'selected' : ''}>v${v.version_no}</option>`).join('')}</select></label>${downloadMenu}` : '';
+  if (version && state?.collaboration) document.getElementById('studio-tools').insertAdjacentHTML('beforeend', '<button type="button" class="pill" data-comment-toggle>评论</button>');
+  if (version && current.artifacts.find(item => item.id === artifact.id)?.visibility !== 'private') document.getElementById('studio-tools').insertAdjacentHTML('beforeend', window.MethodAtlasCollaboration?.relatedButton('artifact', artifact.id, !draftView && artifact.versions.some(v => v.id === version.id) ? version.id : null) || '');
+  if (version?.kind === 'manuscript' && state?.collaboration && current.artifacts.find(item => item.id === artifact.id)?.visibility === 'private') document.getElementById('studio-tools').insertAdjacentHTML('beforeend', '<button type="button" class="pill" data-action="publish-document">发布副本</button>');
   if (version?.kind === 'graph' && version.id !== artifact.versions.at(-1).id) document.getElementById('studio-tools').insertAdjacentHTML('beforeend','<button data-action=restore-graph>恢复此版</button>');
   if (version && ['html','docx'].includes(version.kind) && version.id !== artifact.versions.at(-1).id) document.getElementById('studio-tools').insertAdjacentHTML('beforeend', '<button data-action="restore-artifact" title="追加恢复版本，保留当前及历史内容">恢复此版</button>');
   if (version?.kind === 'manuscript') {
     host.innerHTML = '';
     if (!window.MethodAtlasWriting) { outputKey = null; host.innerHTML = '<p role="status">编辑器正在加载，请稍候…</p>'; return; }
     document.querySelector('#studio-tools .download-menu')?.remove();
-    window.MethodAtlasWriting.mount(host, {project:current.id,artifact:artifact.id,selectedVersion:version.id === artifact.versions.at(-1).id ? null : versionId,
-      context:()=>({conversation:conversation.id,selected:[...selected],papers:current.papers}),onCitation:openCitation,onAddFragment:addSelectedFragment,
+    const picker = document.getElementById('version-select');
+    picker.innerHTML = '<option value="draft">当前草稿</option>'+artifact.versions.map(v=>`<option value="${esc(v.id)}">v${v.version_no} · ${esc(v.payload.summary || new Date(v.created).toLocaleString())}</option>`).join('');
+    if (artifact.viewed_snapshot) picker.insertAdjacentHTML('beforeend', `<option value="${esc(artifact.viewed_snapshot.id)}">引用快照</option>`);
+    picker.value = versionId;
+    window.MethodAtlasWriting.mount(host, {project:current.id,artifact:artifact.id,selectedVersion:draftView ? null : versionId,
+      context:()=>({conversation:serverConversationId(),selected:[...selected],papers:current.papers}),onCitation:openCitation,onAddFragment:fragment=>window.MethodAtlasAI.open(fragment),
       // 历史版本只读，得让编辑区自己能一键回到最新版（否则用户只会觉得「打不进去字」）。
-      onOpenLatest:()=>{versionId=null;renderOutput();},
-        onSaved:(loaded,restoreVersion)=>{if(current?.id!==loaded.project_id)return;artifact=loaded;versionId=restoreVersion||loaded.versions.at(-1).id;if(!restoreVersion)outputKey=`${loaded.id}:${versionId}`;saveWorkspaceState(); const index=current.artifacts.findIndex(a=>a.id===loaded.id);if(index>=0)current.artifacts[index]={...current.artifacts[index],title:loaded.title,updated:loaded.updated};const picker=document.getElementById('version-select');if(picker)picker.innerHTML=loaded.versions.map(v=>`<option value="${esc(v.id)}" ${v.id===versionId?'selected':''}>v${v.version_no} · ${esc(v.payload.author||'')}</option>`).join('');if(restoreVersion){renderOutput();}}});
+      onOpenLatest:()=>{versionId='draft';renderOutput();},
+        onSaved:(loaded,restoreVersion)=>{if(current?.id!==loaded.project_id || artifact?.id!==loaded.id)return;artifact=loaded;versionId='draft';if(!restoreVersion)outputKey=`${loaded.id}:draft`;saveWorkspaceState(); const index=current.artifacts.findIndex(a=>a.id===loaded.id);if(index>=0)current.artifacts[index]={...current.artifacts[index],title:loaded.title,updated:loaded.updated};const picker=document.getElementById('version-select');if(picker)picker.innerHTML='<option value="draft" selected>当前草稿</option>'+loaded.versions.map(v=>`<option value="${esc(v.id)}">v${v.version_no} · ${esc(v.payload.summary || new Date(v.created).toLocaleString())}</option>`).join('');if(picker)syncSelectMenu(picker);if(restoreVersion){renderOutput();}}});
     return;
   }
   const outputs = current.artifacts.filter(item => item.kind !== 'progress');
@@ -1268,6 +2164,7 @@ function renderOutput() {
 // Figure results stay with their answer: opening them never replaces the current document.
 function renderFigureInsight(citation) {
   const observations = Array.isArray(citation.observations) ? citation.observations.filter(item => item && typeof item.text === 'string') : [];
+  const gaps = Array.isArray(citation.gaps) ? citation.gaps.filter(item => typeof item === 'string' && item.trim()) : [];
   const rect = citation.image?.rect || citation.rect;
   const crop = Array.isArray(rect) && rect.length === 4 && rect.every(Number.isFinite) && rect[2] > rect[0] && rect[3] > rect[1];
   const params = crop ? new URLSearchParams({version_id:citation.paper_version_id,page:String(citation.page),x0:String(rect[0]),y0:String(rect[1]),x1:String(rect[2]),y1:String(rect[3])}) : null;
@@ -1282,6 +2179,7 @@ function renderFigureInsight(citation) {
     <div>回到原图：${citationLink(citation)} · <a href="/api/projects/${encodeURIComponent(current.id)}/citations/${encodeURIComponent(citation.id)}/export" download>下载 PDF</a></div>
     ${section('image','图中可见')}
     ${section('context','正文说明')}
+    ${gaps.length ? `<section><h4>解读边界</h4><ul>${gaps.map(item => `<li>${esc(item)}</li>`).join('')}</ul></section>` : ''}
     ${!observations.length ? '<p class="muted">未取得可靠观察，请重新读取清晰的原图。</p>' : ''}
   </div></section>`;
 }
@@ -1417,8 +2315,31 @@ function researchPreview(version) {
     quote.showPopover({source:button});const r=button.getBoundingClientRect(),q=quote.getBoundingClientRect();
     quote.style.left=Math.max(12,Math.min(r.right-q.width,innerWidth-q.width-12))+'px';
     quote.style.top=Math.max(12,Math.min(r.bottom+8,innerHeight-q.height-12))+'px';
-  }document.addEventListener('click',readingCitation,true);document.addEventListener('keydown',readingCitation,true);`;
+  }document.addEventListener('click',readingCitation,true);document.addEventListener('keydown',readingCitation,true);
+  // 划词探针：沙盒 iframe 的选区事件主页面收不到，统一经 postMessage 上报，由主页面渲染划词菜单。
+  let selectionTimer=null;
+  const reportSelection=clear=>{
+    clearTimeout(selectionTimer);
+    if(clear){parent.postMessage({type:'methodatlas-output-selection',clear:true},'*');return;}
+    selectionTimer=setTimeout(()=>{
+      const chosen=document.getSelection();
+      if(!chosen||chosen.isCollapsed||!chosen.rangeCount){parent.postMessage({type:'methodatlas-output-selection',clear:true},'*');return;}
+      const rects=Array.from(chosen.getRangeAt(0).getClientRects()).filter(r=>r.width>1&&r.height>1),anchor=rects.at(-1);
+      if(!anchor){parent.postMessage({type:'methodatlas-output-selection',clear:true},'*');return;}
+      parent.postMessage({type:'methodatlas-output-selection',quote:String(chosen).trim().slice(0,4000),rect:{left:anchor.left,top:anchor.top,right:anchor.right,bottom:anchor.bottom}},'*');
+    },180);
+  };
+  document.addEventListener('selectionchange',()=>reportSelection(false),true);
+  document.addEventListener('scroll',()=>reportSelection(true),true);
+  document.addEventListener('keydown',event=>{
+    if(event.ctrlKey||event.metaKey||event.altKey)return;
+    const key=event.key.length===1?event.key.toLowerCase():event.key;
+    if(key==='Escape'){reportSelection(true);return;}
+    const action={e:'explain',t:'translate',c:'comment',Enter:'ask'}[key];
+    if(action)parent.postMessage({type:'methodatlas-output-selection',action},'*');
+  });`;
   doc.body.append(script);
+  window.MethodAtlasComments?.installPreview(doc, nonce);
   return '<!doctype html>'+doc.documentElement.outerHTML;
 }
 
@@ -1438,13 +2359,13 @@ async function loadArtifact(id, version = null, focus = true) {
   const generation = viewGeneration, projectId = current?.id;
   const request = ++artifactRequest;
   try {
-    const loaded = await api(`/api/projects/${projectId}/artifacts/${id}`);
+    const loaded = await api(`/api/projects/${projectId}/artifacts/${id}${version && version !== 'draft' ? '?version_id=' + encodeURIComponent(version) : ''}`);
     if (generation !== viewGeneration || current?.id !== projectId || request !== artifactRequest) return;
     if (loaded.kind === 'progress') {
-      document.dispatchEvent(new CustomEvent('open-project-memory', {detail:{day:loaded.versions.at(-1)?.payload.day}}));
+      document.dispatchEvent(new CustomEvent('open-project-memory', {detail:{day:loaded.versions.at(-1)?.payload.day,version}}));
       return;
     }
-    artifact = loaded; versionId = version || loaded.default_version_id; renderOutput();
+    artifact = loaded; versionId = version || (loaded.kind === 'manuscript' ? 'draft' : loaded.default_version_id); renderOutput();
     if (focus) { revealPanel('output-panel'); document.querySelector('[data-action=artifact-list]')?.focus(); }
   } catch (error) { if (generation === viewGeneration && current?.id === projectId) toast(error.message); }
 }
@@ -1471,8 +2392,8 @@ async function restoreArtifact(target) {
   const generation = viewGeneration, request = artifactRequest;
   const projectId = current.id, id = artifact.id, version = versionId, base = artifact.versions.at(-1).id;
   const requestKey = `restore:${id}:${version}:${base}`;
-  const requestId = localStorage.getItem(requestKey) || uid();
-  localStorage.setItem(requestKey,requestId);
+  const requestId = (globalThis.MethodAtlasStorage?.local || localStorage).getItem(requestKey) || uid();
+  (globalThis.MethodAtlasStorage?.local || localStorage).setItem(requestKey,requestId);
   target.disabled = true;
   try {
     const result = await api(`/api/projects/${projectId}/artifacts/${id}/restore`,{method:'POST',body:JSON.stringify({version_id:version,base_version_id:base,request_id:requestId})});
@@ -1481,21 +2402,14 @@ async function restoreArtifact(target) {
   finally { if (target.isConnected) target.disabled = false; }
 }
 
-// Restoring from the version menu appends a new version and keeps every older one; it shares the
-// writing endpoint the editor's own 恢复此版为新版本 button uses, so both entrances behave alike.
+// The history menu opens the selected archive read-only. Only the editor's confirmed
+// 恢复到当前草稿 action replaces the draft; viewing an archive must never write it.
 async function restoreDocument(target) {
-  const generation = viewGeneration, request = artifactRequest;
-  const projectId = current.id, id = artifact.id, version = target.dataset.id, base = artifact.versions.at(-1).id;
-  if (!version || version === base) return toast('这已经是最新版。');
-  const requestKey = `restore:${id}:${version}:${base}`;
-  const requestId = localStorage.getItem(requestKey) || uid();
-  localStorage.setItem(requestKey, requestId);
+  const id = artifact?.id, version = target.dataset.id;
+  if (target.disabled || !id || !artifact.versions.some(item => item.id === version)) return;
   target.disabled = true;
   try {
-    await window.MethodAtlasWriting?.flush();
-    if (generation !== viewGeneration || request !== artifactRequest || current?.id !== projectId || artifact?.id !== id) return;
-    const result = await api(`/api/projects/${projectId}/documents/${id}/restore`, {method:'POST', body:JSON.stringify({request_id:requestId, version_id:version, base_version_id:base})});
-    if (generation === viewGeneration && current?.id === projectId && artifact?.id === id) await loadArtifact(id, result.version_id, false);
+    await loadArtifact(id, version, false);
   } catch (error) { toast(error.message); }
   finally { if (target.isConnected) target.disabled = false; }
 }
@@ -1503,98 +2417,172 @@ async function restoreDocument(target) {
 async function submit() {
   const input = document.getElementById('chat-input'), text = input.value.trim();
   if (!text) { if (!pending) toast('请先输入问题。'); return; }
-  const writingConversation = conversation.id, writingProject = current.id, writingInput = input.value;
+  const writingProject=current.id,writingInput=input.value,local=conversation.local,fragments=selectedFragments(),settings=window.MethodAtlasSettings?.request();
+  try{if(local && !await window.MethodAtlasAI.prepareSend())return;}catch(error){toast(error.message);return;}
+  if(current?.id!==writingProject || !input.isConnected)return;
+  const writingConversation = conversation.id;
   const isAudit = /查新|引用(?:核查|审计|核验)|独立.{0,4}(?:审阅|审稿)|novelty check|citation audit|independent (?:paper )?review/i.test(text) && !/^\s*(?:请)?\s*(?:解释|介绍|什么是|如何|怎么)/.test(text) && !/(?:请|帮我)\s*(?:(?:根据|按照|按).{0,25}?(?:报告|意见|建议|结果))?\s*(?:修复|修改|修正)/.test(text);
   const writingResult = isAudit || window.MethodAtlasSettings?.request().deep_research ? null : await window.MethodAtlasWriting?.submit(text);
-  if (writingResult?.handled) { if(writingResult.submitted && current?.id === writingProject && conversation?.id === writingConversation && input.isConnected && input.value === writingInput) { input.value = ''; localStorage.removeItem(`draft:${writingConversation}`); } return; }
+  if (writingResult?.handled) { if(writingResult.submitted && current?.id === writingProject && conversation?.id === writingConversation && input.isConnected && input.value === writingInput) { input.value = ''; (globalThis.MethodAtlasStorage?.local || localStorage).removeItem(`draft:${writingConversation}`); } return; }
   try { await window.MethodAtlasWriting?.flush(); } catch(error) { return toast(error.message); }
-  if(current?.id !== writingProject || conversation?.id !== writingConversation || !input.isConnected || input.value !== writingInput) return;
+  if(current?.id !== writingProject || conversation?.id !== writingConversation || !input.isConnected || !local && input.value !== writingInput) return;
   if (busyTask()) return enqueue(text);
-  await dispatchMessage(text);
+  await dispatchMessage(text,fragments,false,settings);
 }
 
-async function dispatchMessage(text, fragments = selectedFragments(), fromQueue = false, settings = window.MethodAtlasSettings?.request()) {
-  try { if (!settings?.deep_research && await window.MethodAtlasProgress?.revise(text)) return true; } catch(error) {toast(error.message);return false;}
+async function dispatchMessage(text, fragments = selectedFragments(), fromQueue = false, settings = window.MethodAtlasSettings?.request(), queued = null) {
+  try{if(conversation.local && !await window.MethodAtlasAI.prepareSend())return false;}catch(error){toast(error.message);return false;}
+  const origin = {generation:viewGeneration,project:current.id,conversation:conversation.id};
+  try { if (!queued?.request && !settings?.deep_research && await window.MethodAtlasProgress?.revise(text)) return true; } catch(error) {toast(error.message);return false;}
+  if (!isCurrentView(origin.generation,origin.project,origin.conversation)) return false;
   const generation = viewGeneration, projectId = current.id, conversationId = conversation.id;
   const requestKey = `request:${conversationId}`;
-  const prior = JSON.parse(localStorage.getItem(requestKey) || 'null');
-  const referenceVersion = artifact && (artifact.versions.find(v => v.id === versionId) || artifact.versions.at(-1));
-  const payload = {text, ...settings, replace_active:true, selected_paper_ids:[...selected], reference: referenceVersion && (referenceVersion.kind === 'manuscript' || conversation.messages.some(m => m.task_id === referenceVersion.task_id)) ? {artifact_id:artifact.id, version_id:referenceVersion.id} : null};
-  if(referenceVersion && !payload.reference) payload.report_sources = [{artifact_id:artifact.id,version_id:referenceVersion.id}];
-  const progressContext = window.MethodAtlasProgress?.context();
+  const prior = JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(requestKey) || 'null');
+  const referenceVersion = window.MethodAtlasAI?.isOpen() ? null : artifact && (versionId === 'draft' && artifact.draft || artifact.versions.find(v => v.id === versionId) || artifact.versions.at(-1));
+  const referenceArtifactId = artifact?.id, selectedPaperIds = [...new Set([...selected,...fragments.filter(f=>f.kind==='paper').map(f=>f.paper_id)])];
+  const progressContext = window.MethodAtlasAI?.isOpen() ? null : window.MethodAtlasProgress?.context();
+  if (!queued?.request && referenceVersion?.id.startsWith('draft_')) {
+    try { await api(`/api/projects/${projectId}/documents/${artifact.id}/snapshot`, {method:'POST',body:JSON.stringify({version_id:referenceVersion.id})}); }
+    catch(error) {toast(error.message);return false;}
+    if (!isCurrentView(generation,projectId,conversationId)) return false;
+  }
+  let payload = {text, ...settings, replace_active:true, selected_paper_ids:selectedPaperIds, reference: referenceVersion && (referenceVersion.kind === 'manuscript' || referenceVersion.conversation_id === conversationId || conversation.messages.some(m => m.task_id === referenceVersion.task_id)) ? {artifact_id:referenceArtifactId, version_id:referenceVersion.id} : null};
+  if(referenceVersion && !payload.reference) payload.report_sources = [{artifact_id:referenceArtifactId,version_id:referenceVersion.id}];
   if(progressContext?.reference) {payload.progress_reference = progressContext.reference;payload.reference=null;delete payload.report_sources;}
-  if(fragments.length)payload.selected_fragments=fragments.map(({artifact_id,version_id,selection,text})=>({artifact_id,version_id,selection,text}));
+  const writingFragments=fragments.filter(f=>!f.kind), contexts=fragments.filter(f=>f.kind);
+  if(writingFragments.length)payload.selected_fragments=writingFragments.map(({artifact_id,version_id,selection,text})=>({artifact_id,version_id,selection,text}));
+  if(contexts.length)payload.context_references=contexts.map(({id,title,text,version_no,day,truncated,...reference})=>reference);
   const signature = JSON.stringify(payload);
-  payload.client_message_id = prior?.signature === signature ? prior.id : uid();
+  payload.client_message_id = queued?.id || (prior?.signature === signature ? prior.id : uid());
+  if (queued?.request) payload = queued.request;
   try {
-    localStorage.setItem(requestKey, JSON.stringify({signature,id:payload.client_message_id}));
+    (globalThis.MethodAtlasStorage?.local || localStorage).setItem(requestKey, JSON.stringify({signature:JSON.stringify({...payload,client_message_id:undefined}),id:payload.client_message_id}));
+    if (queued) updateQueued(conversationId, queued.id, {request:payload});
     saveSelectedFragments(selectedFragments().filter(f=>!fragments.some(sent=>sent.id===f.id)));
   } catch(error) {toast('无法保存发送草稿，请释放浏览器存储后重试。');return false;}
   pending = true;
+  projectPollSequence++; clearTimeout(pollTimer);
   conversation.messages.push({role:'user', text, selected_fragments:fragments});
   const input = document.getElementById('chat-input');
-  if (input && !fromQueue) input.value = '';
+  const draftEdit=draftEdits.get(conversationId), draftValue=(globalThis.MethodAtlasStorage?.local || localStorage).getItem(`draft:${conversationId}`);
+  if (input && !fromQueue && input.value.trim()===text) input.value = '';
   renderChat(true);
   let result;
   try {
     result = await api(`/api/projects/${projectId}/conversations/${conversationId}/messages`, {method:'POST', body:JSON.stringify(payload)});
   } catch (error) {
     const sameView=isCurrentView(generation,projectId,conversationId), box=sameView?document.getElementById('chat-input'):null;
+    window.MethodAtlasSettings?.sent(conversationId);
     if(sameView){pending=false;connectionWarning=error.status ? error.message : '暂时无法确认这条请求是否送达。输入已保留，请检查连接后刷新确认，再调整并发送。';if(conversation.messages.at(-1)?.role==='user' && conversation.messages.at(-1).text===text)conversation.messages.pop();}
     try {
       if(!fromQueue && box && !box.value && !selectedFragments().length && JSON.stringify(settings)===JSON.stringify(window.MethodAtlasSettings?.request())){
-        box.value=text;localStorage.setItem(`draft:${conversationId}`,text);saveSelectedFragments(fragments,conversationId);
+        box.value=text;(globalThis.MethodAtlasStorage?.local || localStorage).setItem(`draft:${conversationId}`,text);saveSelectedFragments(fragments,conversationId);
       } else if (!fromQueue) {
-        const queue=sameView?messageQueue:JSON.parse(localStorage.getItem(`queue:${conversationId}`)||'[]');
-        queue.unshift({id:uid(),text,fragments,settings,failed:true});
-        localStorage.setItem(`queue:${conversationId}`,JSON.stringify(queue));
+        const queue=sameView?messageQueue:JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(`queue:${conversationId}`)||'[]');
+        queue.unshift({id:payload.client_message_id,text,fragments,settings,request:payload,failed:true});
+        (globalThis.MethodAtlasStorage?.local || localStorage).setItem(`queue:${conversationId}`,JSON.stringify(queue));
       }
     } catch(storageError) {toast('发送失败且无法保存草稿，请保留当前页面并复制原问题：'+text);}
-    if(sameView)renderChat();
+    if(sameView){renderChat();if(state?.collaboration)pollTimer=setTimeout(()=>refreshTask(activeTaskId,generation,projectId,conversationId),3000);}
     return false;
   }
   window.MethodAtlasSettings?.sent(conversationId);
   // An accepted POST must never become a new draft just because refreshing failed.
   try {
-    if (!input?.value) localStorage.removeItem(`draft:${conversationId}`);
-    localStorage.removeItem(`graph-prepared:${conversationId}`);
-    localStorage.removeItem(`report-sources:${conversationId}`);
-    localStorage.removeItem(requestKey);
+    if (!input?.value && draftEdits.get(conversationId)===draftEdit && (globalThis.MethodAtlasStorage?.local || localStorage).getItem(`draft:${conversationId}`)===draftValue) (globalThis.MethodAtlasStorage?.local || localStorage).removeItem(`draft:${conversationId}`);
+    (globalThis.MethodAtlasStorage?.local || localStorage).removeItem(`graph-prepared:${conversationId}`);
+    (globalThis.MethodAtlasStorage?.local || localStorage).removeItem(`report-sources:${conversationId}`);
+    if(JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem(requestKey)||'null')?.id===payload.client_message_id)(globalThis.MethodAtlasStorage?.local || localStorage).removeItem(requestKey);
   } catch {}
-  if (!isCurrentView(generation, projectId, conversationId)) return;
+  if (!isCurrentView(generation, projectId, conversationId)) return true;
   pending = false;
   renderChat();
   activeTaskId = result.task_id;
   if (result.duplicate) toast('这条请求已处理，继续读取原任务状态。');
   try {await refreshTask(result.task_id, generation, projectId, conversationId);}
   catch(error){connectionWarning='消息已发送，暂时无法读取回复。请恢复连接后刷新查看。';renderChat();}
-
+  return true;
 }
 
+let historyLoading = null;
+async function loadOlderMessages() {
+  if (historyLoading?.generation === viewGeneration || !conversation?.has_more) return;
+  const generation=viewGeneration, projectId=current.id, conversationId=conversation.id;
+  const request={generation};historyLoading=request;renderChat(false,true);
+  try {
+    const page=await api(`/api/projects/${projectId}/conversations/${conversationId}/messages?before=${conversation.before}`);
+    if (!isCurrentView(generation,projectId,conversationId)) return;
+    const log=document.getElementById('chat-log');
+    const anchor=[...(log?.querySelectorAll('[data-message-id]') || [])].find(node=>node.getBoundingClientRect().bottom>log.getBoundingClientRect().top);
+    const anchorId=anchor?.dataset.messageId, top=anchor?.getBoundingClientRect().top;
+    const knownTasks=new Map([...conversation.messages.map(m=>m.task).filter(Boolean),...(current.tasks || [])].map(task=>[task.id,task]));
+    const messages=new Map(page.messages.map(message=>[message.id,knownTasks.has(message.task_id)?{...message,task:knownTasks.get(message.task_id)}:message]));
+    conversation.messages.forEach(message=>messages.set(message.id,message));
+    Object.assign(conversation,{...page,messages:[...messages.values()].sort((a,b)=>(a.created || '').localeCompare(b.created || ''))});
+    historyLoading=null;renderChat(false,true);
+    const preserved=anchorId && document.querySelector(`[data-message-id="${CSS.escape(anchorId)}"]`);
+    if (preserved) document.getElementById('chat-log').scrollTop += preserved.getBoundingClientRect().top-top;
+  } catch(error) { if(isCurrentView(generation,projectId,conversationId))toast(error.message); }
+  finally {if(historyLoading===request){historyLoading=null;if(isCurrentView(generation,projectId,conversationId))renderChat(false,true);}}
+}
+
+function mergeProjectUpdate(previous, update) {
+  const tasks = new Map(update.tasks.map(task=>[task.id,task]));
+  return {...update, conversations:update.conversations.map(next=>{
+    const prior = previous.conversations.find(item=>item.id===next.id);
+    const messages = new Map((prior?.messages || []).filter(message=>message.id && !(message.id.startsWith('explanation_') && tasks.has(message.task_id))).map(message=>[message.id,message]));
+    next.messages.forEach(message=>messages.set(message.id,message));
+    return {...prior, ...next, messages:[...messages.values()].map(message=>tasks.has(message.task_id) ? {...message,task:tasks.get(message.task_id)} : message).sort((a,b)=>a.created.localeCompare(b.created))};
+  })};
+}
+
+let projectPollSequence = 0;
 async function refreshTask(taskId, generation, projectId, conversationId) {
   if (!isCurrentView(generation, projectId, conversationId)) return;
+  const local=conversation.local?conversation:null;
   clearTimeout(pollTimer);
+  if (pending || (state?.collaboration && document.hidden)) {
+    pollTimer = setTimeout(()=>refreshTask(taskId,generation,projectId,conversationId),3000);
+    return;
+  }
+  const sequence = ++projectPollSequence;
   let latest;
   try {
-    latest = await api(`/api/projects/${projectId}`);
+    const query = new URLSearchParams(local?{compact:'1'}:{compact:'1',conversation:conversationId});
+    if (Number.isInteger(current.message_cursor)) {
+      query.set('after', current.message_cursor);
+      if (Number.isInteger(current.event_cursor)) query.set('events_after', current.event_cursor);
+      const tracked = new Set(current.conversations.flatMap(c=>c.messages).map(m=>m.task).filter(t=>t && (!finished(t.status) || t.status==='waiting')).map(t=>t.id));
+      if (taskId) tracked.add(taskId);
+      tracked.forEach(id=>query.append('task',id));
+    }
+    latest = await api(`/api/projects/${projectId}${query.size ? '?' + query : ''}`);
+    if (latest.delta) latest = mergeProjectUpdate(current, latest);
   } catch (error) {
-    if (!isCurrentView(generation, projectId, conversationId)) return;
+    if (!isCurrentView(generation, projectId, conversationId) || sequence !== projectPollSequence) return;
+    if (state?.collaboration && [403,404].includes(error.status)) {
+      document.querySelectorAll('dialog[open]').forEach(node=>node.close());
+      await home(true); toast('项目访问权已变更；浏览器中的未保存草稿仍保留。'); return;
+    }
     pollFailures += 1;
-    const retry = error.retryable && pollFailures <= 5;
-    connectionWarning = '暂时连接不上工作台，无法确认最新处理结果。已有内容和输入已保留；连接恢复后请刷新页面查看。';
+    const retry = (error.retryable || error.status >= 500) && (state?.collaboration || pollFailures <= 5);
+    connectionWarning = '暂时连接不上工作台，已有内容和输入已保留；正在尝试恢复同步。';
     renderChat();
     if (retry) pollTimer = setTimeout(() => refreshTask(taskId,generation,projectId,conversationId), Math.min(30000,1000 * 2 ** (pollFailures - 1)));
     return;
   }
-  if (!isCurrentView(generation, projectId, conversationId)) return;
+  if (!isCurrentView(generation, projectId, conversationId) || sequence !== projectPollSequence) return;
   const wasDisconnected = !!connectionWarning;
+  latest.conversations.forEach(item=>{const optimistic=window.MethodAtlasSettings?.pending?.(item.id);if(optimistic)item.chat_options=optimistic;});
   pollFailures = 0; connectionWarning = '';
   const before = JSON.stringify(conversation);
-  const sourcesChanged = JSON.stringify(current.papers) !== JSON.stringify(latest.papers);
+  if ((current.source_organization?.revision || 0) > (latest.source_organization?.revision || 0)) latest.source_organization = current.source_organization;
+  const sourcesChanged = JSON.stringify(current.papers) !== JSON.stringify(latest.papers) || JSON.stringify(current.source_organization) !== JSON.stringify(latest.source_organization);
   const outputsChanged = JSON.stringify(current.artifacts) !== JSON.stringify(latest.artifacts);
   const newOutputs = latest.artifacts.filter(item => !current.artifacts.some(old => old.id === item.id));
   current = latest;
-  conversation = current.conversations.find(item => item.id === conversationId) || current.conversations[0];
+  conversation = current.conversations.find(item => item.id === conversationId) || local || current.conversations[0];
+  if (!conversation) { await home(true); return; }
   const tasks = conversation.messages.filter(m => m.role === 'user').map(m => m.task).filter(Boolean);
   const located = tasks.find(t => !autoLocatedTasks.has(t.id) && t.tools.some(tool => tool.name === 'locate' && tool.status === 'succeeded') && t.citations.length);
   if (located) { autoLocatedTasks.add(located.id); toast('原文位置已找到，可点击回答中的引用查看。'); }
@@ -1610,22 +2598,38 @@ async function refreshTask(taskId, generation, projectId, conversationId) {
     syncPanelLayout();
     if (newOutputs.length) toast('新成果已生成，可切换到成果查看。');
   }
-  if (projectRunningTask() || current.papers.some(p => p.availability?.fulltext === 'pending')) pollTimer = setTimeout(() => refreshTask(taskId,generation,projectId,conversationId).catch(error => toast(error.message)),400);
+  if (artifact?.kind === 'manuscript') window.MethodAtlasWriting?.remoteVersion(current.id, artifact.id, current.artifacts.find(item => item.id === artifact.id)?.current_version_id);
+  if (artifact && (artifact.kind !== 'manuscript' || versionId !== 'draft')) {
+    const latestVersion = current.artifacts.find(item => item.id === artifact.id)?.current_version_id;
+    const previous = document.querySelector('[data-shared-new-version]');
+    if (latestVersion && latestVersion !== versionId) {
+      if (previous?.dataset.version !== latestVersion) {
+        previous?.remove();
+        document.getElementById('studio-tools')?.insertAdjacentHTML('beforeend', `<button type="button" class="pill" data-shared-new-version data-action="file" data-id="${esc(artifact.id)}" data-version="${esc(latestVersion)}">查看新版</button>`);
+      }
+    } else previous?.remove();
+  }
+  if (state?.collaboration) window.dispatchEvent(new CustomEvent('methodatlas-project-sync', {detail:{project:projectId}}));
+  // reuse full snapshots for one app process; add revision cursors if measured 20-user load exceeds capacity.
+  if (state?.collaboration || projectRunningTask() || current.papers.some(p => p.availability?.fulltext === 'pending')) pollTimer = setTimeout(() => refreshTask(taskId,generation,projectId,conversationId).catch(error => toast(error.message)),state?.collaboration ? 3000 : 400);
   pumpQueue();
 }
 
 async function createProject(form) {
   const name = form.elements.name.value.trim();
   if (!name) { document.getElementById('project-error').textContent = '请输入项目名称。'; return; }
-  const generation = viewGeneration, button = form.querySelector('[type=submit]');
+  const generation = viewGeneration, button = form.querySelector('[type=submit]'), dialog = form.closest('dialog'), session = form.dataset.session;
+  const active = () => dialog.open && form.dataset.session === session && generation === viewGeneration;
   if (button.disabled) return;
   button.disabled = true;
   try {
-    const result = await api('/api/projects', {method:'POST', body:JSON.stringify({name})});
-    form.closest('dialog').close();
-    if (generation === viewGeneration) await openProject(result.project_id);
-  } catch (error) { document.getElementById('project-error').textContent = error.message; }
-  finally { button.disabled = false; }
+    const result = await api('/api/projects', {method:'POST', body:JSON.stringify({name, ...(window.MethodAtlasCollaboration?.selectedWorkspace() ? {workspace_id:window.MethodAtlasCollaboration.selectedWorkspace()} : {})})});
+    if(!active())return;
+    if(form.elements.name.value.trim()!==name){toast('项目已创建，当前输入已保留。');return;}
+    dialog.close();
+    await openProject(result.project_id);
+  } catch (error) { if(active())document.getElementById('project-error').textContent = error.message; }
+  finally { if(form.dataset.session===session)button.disabled = false; }
 }
 
 document.addEventListener('click', event => {
@@ -1634,38 +2638,38 @@ document.addEventListener('click', event => {
   const action = target.dataset.action;
   if (action === 'skill-workbench') { document.getElementById('skill-workbench').dataset.pointerMotion = String(event.detail > 0); renderSkillWorkbench(); }
   if (action === 'shell') { switchShellView(target.dataset.value); revealPanel('chat-panel'); }
-  if (action === 'panel-tab') revealPanel(target.dataset.panel);
-  if (action === 'toggle-panel') {
-    const id = target.dataset.panel;
-    if (collapsedPanels.has(id)) collapsedPanels.delete(id); else collapsedPanels.add(id);
-    syncPanelLayout();
-  }
-  if (action === 'back-chat') openMiddle('chat');
+  if (action === 'toggle-panel') togglePanel(target.dataset.panel);
+  if (action === 'close-panels') { const id=activePanel; activePanel='chat-panel'; syncPanelLayout(); document.querySelector(`.app-header [data-panel="${id}"]`)?.focus(); }
+  if (action === 'back-chat') { switchShellView('chat'); openMiddle('chat'); }
   if (action === 'control') controlTask(target);
   if (action === 'stop') stopTask(target.dataset.id);
-  if (action === 'new-project') { document.getElementById('new-project-form').reset(); document.getElementById('project-error').textContent = ''; document.getElementById('project-dialog').showModal(); }
+  if (action === 'new-project') { const form=document.getElementById('new-project-form');form.reset();form.dataset.session=crypto.randomUUID();form.querySelector('[type=submit]').disabled=false; document.getElementById('project-error').textContent = ''; document.getElementById('project-dialog').showModal(); }
   if (action === 'refresh-status') { pollFailures = 0; refreshTask(activeTaskId,viewGeneration,current.id,conversation.id).catch(error => toast(error.message)); }
   if (action === 'settings') window.MethodAtlasSettings?.open();
   if (action === 'close-project') document.getElementById('project-dialog').close();
-  if (action === 'view') { projectView = target.dataset.value; localStorage.setItem('project-view',projectView); renderProjects(); target.closest('details')?.removeAttribute('open'); }
+  if (action === 'view') { projectView = target.dataset.value; (globalThis.MethodAtlasStorage?.local || localStorage).setItem('project-view',projectView); renderProjects(); target.closest('details')?.removeAttribute('open'); }
   if (action === 'task' && !pending && taskInfo[target.dataset.value]) {
     if (target.dataset.value === 'review' && !target.dataset.auditMode) { renderSkillWorkbench('review'); document.getElementById('skill-workbench').showPopover(); return; }
     document.getElementById('skill-workbench').hidePopover();
-    localStorage.removeItem(`report-sources:${conversation.id}`);
+    (globalThis.MethodAtlasStorage?.local || localStorage).removeItem(`report-sources:${conversation.id}`);
     const input = document.getElementById('chat-input'), preparedKey = `graph-prepared:${conversation.id}`;
     if (target.dataset.value === 'graph') {
-      if (!input.value.trim() || !localStorage.getItem(preparedKey)) input.value = [input.value.trim(),taskInfo.graph.prompt].filter(Boolean).join('\n\n');
-      localStorage.setItem(preparedKey,'true');
-    } else { input.value = auditModes[target.dataset.auditMode]?.prompt || taskInfo[target.dataset.value].prompt; localStorage.removeItem(preparedKey); }
-    localStorage.setItem(`draft:${conversation.id}`,input.value); input.focus(); input.setSelectionRange(input.value.length,input.value.length);
+      if (!input.value.trim() || !(globalThis.MethodAtlasStorage?.local || localStorage).getItem(preparedKey)) input.value = [input.value.trim(),taskInfo.graph.prompt].filter(Boolean).join('\n\n');
+      (globalThis.MethodAtlasStorage?.local || localStorage).setItem(preparedKey,'true');
+    } else { appendChatPrompt(auditModes[target.dataset.auditMode]?.prompt || taskInfo[target.dataset.value].prompt); (globalThis.MethodAtlasStorage?.local || localStorage).removeItem(preparedKey); }
+    input.dispatchEvent(new Event('input',{bubbles:true})); input.focus(); input.setSelectionRange(input.value.length,input.value.length);
     syncComposer();
   }
   if (action === 'copy-answer') copyAnswer(target);
+  if (action === 'save-answer') saveAnswer(target);
   if (action === 'home') home();
   if (action === 'open-project') openProject(target.dataset.id);
   if (action === 'new-chat') newConversation();
+  if (action === 'new-private-chat') newConversation(false, 'private');
+  if (action === 'publish-answer') window.MethodAtlasCollaboration.publishAnswer(target.dataset.id).catch(error => toast(error.message));
+  if (action === 'publish-document') window.MethodAtlasCollaboration.publishDocument().catch(error => toast(error.message));
   if (action === 'paper') showPaper(target.dataset.id);
-  if (action === 'citation') openCitation(target.dataset.id);
+  if (action === 'citation') previewCitation(target,true);
   if (action === 'legacy-citation') showPaper(target.dataset.id,Number(target.dataset.page),target.dataset.version,{legacy:true,quote:target.dataset.quote});
   if (action === 'read-paper') showPaper(target.dataset.id,1,target.dataset.version);
   if (action === 'file') loadArtifact(target.dataset.id,target.dataset.version);
@@ -1687,10 +2691,11 @@ document.addEventListener('click', event => {
   if (action === 'artifact-list') {
     closeArtifact();
   }
-  if (action === 'close-paper') { paperRequest++; detail = null; renderPaperViews(); saveWorkspaceState(); }
-  if (action === 'pdf-prev' || action === 'pdf-next') { detail.page += action === 'pdf-prev' ? -1 : 1; renderDetail(); }
+  if (action === 'close-paper') { paperRequest++; detail = null; renderDetail(); renderPaperViews(); saveWorkspaceState(); }
+  if (action === 'pdf-prev' || action === 'pdf-next') { detail.page += action === 'pdf-prev' ? -1 : 1; detail.focus = null; renderDetail(); }
   if (action === 'history' || action === 'close-history') { historyOpen = action === 'history' && !historyOpen; renderHistory(); document.querySelector(`[data-action=${historyOpen ? 'close-history' : 'history'}]`)?.focus(); }
   if (action === 'conversation') openProject(current.id,target.dataset.id);
+  if (action === 'older-messages') loadOlderMessages();
 });
 document.addEventListener('click', event => {
   const removeAllFragments=event.target.closest('[data-remove-all-fragments]');
@@ -1709,6 +2714,7 @@ document.addEventListener('click', event => {
     const row = queueAction.closest('[data-queue]'), id = row?.dataset.queue;
     const index = messageQueue.findIndex(item => item.id === id);
     if (index < 0) return;
+    if (messageQueue[index].sending) return toast('正在确认发送结果，请稍候。');
     const action = queueAction.dataset.queueAction;
     if (action === 'up' && index) [messageQueue[index - 1], messageQueue[index]] = [messageQueue[index], messageQueue[index - 1]];
     if (action === 'retry') messageQueue[index].failed=false;
@@ -1718,6 +2724,8 @@ document.addEventListener('click', event => {
       const textarea = row.querySelector('textarea'), text = textarea.value.trim();
       if (!text) return toast('排队内容不能为空。');
       messageQueue[index].text = text;
+      messageQueue[index].id = uid();
+      delete messageQueue[index].request;
       queueEditing = null;
     }
     if (action === 'drop') messageQueue.splice(index,1);
@@ -1741,13 +2749,13 @@ document.addEventListener('click', event => {
   const sortOption = event.target.closest('[data-sort]');
   if (sortOption) {
     projectSort = sortOption.dataset.sort;
-    localStorage.setItem('project-sort',projectSort);
+    (globalThis.MethodAtlasStorage?.local || localStorage).setItem('project-sort',projectSort);
     const menu = sortOption.closest('details');
     if (menu) menu.open = false;
     renderProjects();
   }
 });
-document.addEventListener('input', event => { if (event.target.id === 'project-search') renderProjects(); if (event.target.id === 'conversation-search') renderConversationRows(); if (event.target.id === 'chat-input') { localStorage.setItem(`draft:${conversation.id}`,event.target.value); syncComposer(); } });
+document.addEventListener('input', event => { if (event.target.id === 'chat-input') { draftEdits.set(conversation.id,(draftEdits.get(conversation.id)||0)+1); (globalThis.MethodAtlasStorage?.local || localStorage).setItem(`draft:${conversation.id}`,event.target.value); syncComposer(); } });
 // Drag to reorder the queue: the list is only rebuilt on drop, so the drag itself is never cancelled.
 const moveQueueItem = (id, beforeId) => {
   const from = messageQueue.findIndex(item => item.id === id), to = messageQueue.findIndex(item => item.id === beforeId);
@@ -1787,11 +2795,11 @@ document.addEventListener('dragend', () => {
 });
 document.addEventListener('change', event => {
 
-  if (event.target.id === 'project-sort') { projectSort = event.target.value; localStorage.setItem('project-sort',projectSort); renderProjects(); }
-  if (event.target.id === 'select-all') { current.papers.filter(paper => paper.current_version_id).forEach(paper => event.target.checked ? selected.add(paper.id) : selected.delete(paper.id)); saveSelection(); renderSelectionViews(); }
+  if (event.target.id === 'project-sort') { projectSort = event.target.value; (globalThis.MethodAtlasStorage?.local || localStorage).setItem('project-sort',projectSort); renderProjects(); }
+  if (event.target.id === 'select-all') { sortedSources().filter(paper => paper.current_version_id).forEach(paper => event.target.checked ? selected.add(paper.id) : selected.delete(paper.id)); saveSelection(); renderSelectionViews(); }
   if (event.target.dataset.paper) { event.target.checked ? selected.add(event.target.dataset.paper) : selected.delete(event.target.dataset.paper); saveSelection(); renderSelectionViews(); }
-  if (event.target.id === 'settings-view') { projectView = event.target.value; localStorage.setItem('project-view',projectView); if(document.getElementById('project-grid'))renderProjects(); }
-  if (event.target.id === 'settings-sort') { projectSort = event.target.value; localStorage.setItem('project-sort',projectSort); if(document.getElementById('project-sort')) document.getElementById('project-sort').value = projectSort; if(document.getElementById('project-grid'))renderProjects(); }
+  if (event.target.id === 'settings-view') { projectView = event.target.value; (globalThis.MethodAtlasStorage?.local || localStorage).setItem('project-view',projectView); if(document.getElementById('project-grid'))renderProjects(); }
+  if (event.target.id === 'settings-sort') { projectSort = event.target.value; (globalThis.MethodAtlasStorage?.local || localStorage).setItem('project-sort',projectSort); if(document.getElementById('project-sort')) document.getElementById('project-sort').value = projectSort; if(document.getElementById('project-grid'))renderProjects(); }
   if (event.target.id === 'version-select') {
     const next = event.target.value, previous = versionId, id = artifact?.id;
     Promise.resolve(window.MethodAtlasWriting?.flush()).then(() => {
@@ -1813,7 +2821,245 @@ window.addEventListener('message', event => {
   const projectId = current?.id, artifactId = artifact?.id, selectedVersion = versionId;
   if (version?.citations.some(c => c.id === event.data.id && version.materials.some(m => m.paper_id === c.paper_id && m.paper_version_id === c.paper_version_id))) openCitation(event.data.id, () => frame.isConnected && document.getElementById('html-preview') === frame && current?.id === projectId && artifact?.id === artifactId && versionId === selectedVersion);
 });
+
+// 划词菜单（主页面浮层，复用 reader 的 .reader-selection 样式）：
+// - 成果栏：iframe 探针经 postMessage 上报选区，坐标需换算到主页面视口；
+// - 发现/搜索结果（.discovery-body）：主文档直接捕获 selectionchange。
+const OUTPUT_SELECTION_ACTIONS = [
+  { action:'explain', label:'解释', glyph:'bulb', key:'E', prompt:'请解释下面这段内容的含义与背景：' },
+  { action:'translate', label:'翻译', glyph:'translate', key:'T', prompt:'请将下面这段内容翻译成简体中文，专业术语保留英文：' },
+  { action:'comment', label:'评论', glyph:'edit', key:'C', prompt:'请对下面这段内容给出评论与改进建议：' },
+  { action:'ask', label:'提问', glyph:'chat', key:'Enter', prompt:'' },
+];
+// 发现页没有论文批注语境，按用户要求只保留解释/翻译/提问。
+const DISCOVERY_SELECTION_ACTIONS = OUTPUT_SELECTION_ACTIONS.filter(a => a.action !== 'comment');
+const textSelectionState = { quote: '', title: '', last: null, context: '' };
+function hideTextSelection() {
+  textSelectionState.quote = ''; textSelectionState.title = ''; textSelectionState.last = null; textSelectionState.context = '';
+  const menu = document.getElementById('output-selection');
+  if (menu) menu.hidden = true;
+}
+function showTextSelection(context, actions, data, frame = null) {
+  if (!data.quote) return hideTextSelection();
+  const version = context === 'output' ? artifact?.versions.find(v => v.id === versionId) : null;
+  if (context === 'output' && !version) return;
+  textSelectionState.quote = data.quote;
+  textSelectionState.title = data.title || (version ? `${version.title} · 所选内容` : '所选内容');
+  textSelectionState.last = { context, actions, data }; textSelectionState.context = context;
+  let menu = document.getElementById('output-selection');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.className = 'reader-selection';
+    menu.id = 'output-selection';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', '所选内容操作');
+    document.body.append(menu);
+  }
+  menu.innerHTML = actions.map(a => `<button type="button" role="menuitem" data-output-action="${a.action}" aria-label="${a.label}">${icon(a.glyph)}<span>${a.label}</span><kbd aria-hidden="true">${a.key}</kbd></button>`).join('');
+  // 选区矩形 → 菜单位置：iframe 内坐标先换算到主页面视口，再统一夹取在宿主可视范围内。
+  let bounds, anchor;
+  if (frame) {
+    const frameRect = frame.getBoundingClientRect();
+    bounds = frameRect;
+    anchor = { left: frameRect.left + data.rect.left, top: frameRect.top + data.rect.top, right: Math.min(frameRect.right, frameRect.left + data.rect.right), bottom: Math.min(frameRect.bottom, frameRect.top + data.rect.bottom) };
+  } else {
+    const host = document.getElementById('chat-body');
+    bounds = host?.getBoundingClientRect() || { left: 8, top: 8, right: innerWidth - 8, bottom: innerHeight - 8 };
+    anchor = data.rect;
+  }
+  menu.hidden = false;
+  const size = menu.getBoundingClientRect();
+  const left = Math.max(bounds.left + 8, Math.min(anchor.right - size.width, bounds.right - size.width - 8));
+  const top = anchor.bottom + 8 + size.height <= bounds.bottom ? anchor.bottom + 8 : Math.max(bounds.top + 8, anchor.top - size.height - 8);
+  menu.style.left = left + 'px';
+  menu.style.top = Math.min(top, bounds.bottom - size.height - 8) + 'px';
+}
+window.addEventListener('message', event => {
+  const frame = document.getElementById('html-preview');
+  if (!frame || event.source !== frame.contentWindow || event.origin !== 'null') return;
+  const data = event.data;
+  if (data?.type !== 'methodatlas-output-selection' || frame.dataset.context) return;
+  if (!frame.isConnected || !document.getElementById('output-body')?.classList.contains('html-output')) return;
+  if (data.action) {
+    // 快捷键在 iframe 里按下时菜单可能尚未渲染，用最近一次选区数据补拉起再触发。
+    if ((document.getElementById('output-selection')?.hidden || textSelectionState.context !== 'output') && textSelectionState.last?.context === 'output') showTextSelection('output', OUTPUT_SELECTION_ACTIONS, textSelectionState.last.data, frame);
+    document.querySelector(`#output-selection [data-output-action="${data.action}"]`)?.click();
+    return;
+  }
+  if (data.clear || !data.quote) { if (textSelectionState.context === 'output') hideTextSelection(); return; }
+  showTextSelection('output', OUTPUT_SELECTION_ACTIONS, data, frame);
+});
+// 发现/搜索结果页：选区在主文档，直接捕获。
+let discoverySelectionTimer = null;
+document.addEventListener('selectionchange', () => {
+  clearTimeout(discoverySelectionTimer);
+  const host = document.getElementById('chat-body');
+  if (!host?.classList.contains('discovery-body')) { if (textSelectionState.context === 'discovery') hideTextSelection(); return; }
+  discoverySelectionTimer = setTimeout(() => {
+    const chosen = getSelection(), quote = chosen?.toString().trim();
+    const giveUp = () => { if (textSelectionState.context === 'discovery') hideTextSelection(); };
+    if (!chosen || chosen.isCollapsed || !chosen.rangeCount || !quote) return giveUp();
+    const range = chosen.getRangeAt(0), node = range.commonAncestorContainer;
+    const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    if (!element?.closest('.discovery-body')) return giveUp();
+    const rects = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1), anchor = rects.at(-1);
+    if (!anchor) return giveUp();
+    const cardTitle = element.closest('.recommendation-row')?.querySelector('.recommendation-title')?.textContent?.trim();
+    showTextSelection('discovery', DISCOVERY_SELECTION_ACTIONS, { quote: quote.slice(0, 4000), rect: { left: anchor.left, top: anchor.top, right: anchor.right, bottom: anchor.bottom }, title: cardTitle ? `${cardTitle} · 所选内容` : '搜索结果 · 所选内容' });
+  }, 180);
+});
+// 发现页菜单的主文档快捷键（成果栏的快捷键在 iframe 探针里处理）。
 document.addEventListener('keydown', event => {
+  const menu = document.getElementById('output-selection');
+  if (!menu || menu.hidden || textSelectionState.context !== 'discovery') return;
+  if (event.target.closest('input,textarea,select,[contenteditable=true]') || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key === 'Escape') { hideTextSelection(); return; }
+  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  const action = { e: 'explain', t: 'translate', Enter: 'ask' }[key];
+  if (action) { event.preventDefault(); menu.querySelector(`[data-output-action="${action}"]`)?.click(); }
+});
+document.addEventListener('pointerdown', event => {
+  if (!event.target.closest('#output-selection')) hideTextSelection();
+  if (!event.target.closest('#selection-translate')) closeSelectionTranslate();
+});
+window.addEventListener('resize', () => { hideTextSelection(); closeSelectionTranslate(); });
+// 翻译窗固定在视口中，滚动原文或译文时保留，方便对照阅读。
+document.addEventListener('click', event => {
+  const target = event.target.closest('[data-output-action]');
+  if (!target) return;
+  const quote = textSelectionState.quote, title = textSelectionState.title;
+  const anchor = document.getElementById('output-selection')?.getBoundingClientRect() || null;
+  hideTextSelection();
+  if (!quote) return;
+  if (target.dataset.outputAction === 'translate') { openSelectionTranslate(quote, title, anchor); return; }
+  const prompts = Object.fromEntries(OUTPUT_SELECTION_ACTIONS.map(a => [a.action, a.prompt]));
+  window.MethodAtlasAI.open({ id: uid(), kind: 'selection', title, text: quote }, prompts[target.dataset.outputAction] || '');
+});
+// 划词翻译卡片：点「翻译」不拉起 AI 大浮窗，就地弹出轻量译文卡片（标题 + 复制/关闭 + 继续追问）。
+let selectionTranslateEpoch = 0;
+let stopSelectionTranslateDrag = null;
+function positionSelectionTranslate(card, left, top) {
+  const margin = 12;
+  card.style.left = Math.max(margin, Math.min(left, innerWidth - card.offsetWidth - margin)) + 'px';
+  card.style.top = Math.max(margin, Math.min(top, innerHeight - card.offsetHeight - margin)) + 'px';
+}
+function closeSelectionTranslate() {
+  stopSelectionTranslateDrag?.();
+  selectionTranslateEpoch++;
+  const card = document.getElementById('selection-translate');
+  if (card) { card.hidden = true; delete card.dataset.quote; delete card.dataset.title; }
+}
+function openSelectionTranslate(quote, title, anchor) {
+  let card = document.getElementById('selection-translate');
+  if (!card) {
+    card = document.createElement('section');
+    card.className = 'selection-translate';
+    card.id = 'selection-translate';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-label', '划词翻译');
+    card.hidden = true;
+    card.innerHTML = `<header class="selection-translate-head"><strong>简体中文</strong><div class="row"><button class="icon" type="button" data-translate-copy aria-label="复制译文" disabled>${icon('copy')}</button><button class="icon" type="button" data-translate-close aria-label="关闭翻译">${icon('close')}</button></div></header><div class="selection-translate-body" role="status"></div><footer class="selection-translate-foot"><button class="quiet" type="button" data-translate-ask aria-label="继续追问">${icon('chat')}<span>继续追问</span></button></footer>`;
+    document.body.append(card);
+    const handle = card.querySelector('.selection-translate-head');
+    handle.tabIndex = 0;
+    handle.setAttribute('role', 'group');
+    handle.setAttribute('aria-label', '移动翻译窗口，支持拖动和方向键');
+    handle.title = '拖动移动窗口，也可用方向键移动';
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || !event.isPrimary || event.target.closest('button')) return;
+      stopSelectionTranslateDrag?.();
+      const left = parseFloat(card.style.left), top = parseFloat(card.style.top);
+      const x = event.clientX, y = event.clientY, pointer = event.pointerId;
+      event.preventDefault();
+      handle.focus({preventScroll:true});
+      handle.setPointerCapture(pointer);
+      card.classList.add('is-dragging');
+      const move = e => {
+        if (e.pointerId === pointer) positionSelectionTranslate(card, left + e.clientX - x, top + e.clientY - y);
+      };
+      const stop = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('lostpointercapture', stop);
+        handle.removeEventListener('pointerup', stop);
+        handle.removeEventListener('pointercancel', stop);
+        card.classList.remove('is-dragging');
+        stopSelectionTranslateDrag = null;
+        if (handle.hasPointerCapture(pointer)) handle.releasePointerCapture(pointer);
+      };
+      stopSelectionTranslateDrag = stop;
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('lostpointercapture', stop);
+      handle.addEventListener('pointerup', stop);
+      handle.addEventListener('pointercancel', stop);
+    });
+    handle.addEventListener('keydown', event => {
+      if (event.target !== handle || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
+      event.preventDefault();
+      const step = event.shiftKey ? 64 : 16;
+      positionSelectionTranslate(card, parseFloat(card.style.left) + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0), parseFloat(card.style.top) + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0));
+    });
+    card.addEventListener('click', event => {
+      const button = event.target.closest('button');
+      if (!button || !card.contains(button)) return;
+      if (button.hasAttribute('data-translate-close')) return closeSelectionTranslate();
+      if (button.hasAttribute('data-translate-copy')) {
+        const body = card.querySelector('.selection-translate-body');
+        navigator.clipboard.writeText(body.textContent).then(() => {
+          button.setAttribute('aria-label', '已复制');
+          clearTimeout(button._copyTimer);
+          button._copyTimer = setTimeout(() => button.setAttribute('aria-label', '复制译文'), 1200);
+        }).catch(() => toast('复制失败，请手动选择译文复制。'));
+        return;
+      }
+      if (button.hasAttribute('data-translate-ask')) {
+        const fragment = { id: uid(), kind: 'selection', title: card.dataset.title || '所选内容', text: card.dataset.quote || '' };
+        closeSelectionTranslate();
+        window.MethodAtlasAI.open(fragment, '');
+      }
+    });
+  }
+  card.dataset.quote = quote;
+  card.dataset.title = title || '所选内容';
+  card.hidden = false;
+  const body = card.querySelector('.selection-translate-body');
+  body.classList.add('is-loading');
+  body.textContent = '正在翻译…';
+  const copy = card.querySelector('[data-translate-copy]');
+  copy.disabled = true;
+  copy.setAttribute('aria-label', '复制译文');
+  // 位置：尽量落在划词菜单原位（即选区下方），四周夹取在视口内。
+  const margin = 12, width = Math.min(520, innerWidth - margin * 2);
+  const left = anchor && anchor.width ? Math.max(margin, Math.min(anchor.left, innerWidth - width - margin)) : Math.max(margin, (innerWidth - width) / 2);
+  card.style.left = left + 'px';
+  card.style.top = '0px';
+  const height = card.getBoundingClientRect().height;
+  let top = anchor && anchor.width ? anchor.bottom + 8 : margin + 60;
+  if (top + height > innerHeight - margin) top = anchor && anchor.width ? anchor.top - height - 8 : margin;
+  card.style.top = Math.max(margin, Math.min(top, Math.max(margin, innerHeight - height - margin))) + 'px';
+  requestSelectionTranslate(quote);
+}
+function requestSelectionTranslate(quote) {
+  const token = ++selectionTranslateEpoch, project = current?.id;
+  const card = document.getElementById('selection-translate');
+  const body = card?.querySelector('.selection-translate-body');
+  if (!card || !body) return;
+  if (!project) { body.classList.remove('is-loading'); body.textContent = '请先打开一个项目再使用划词翻译。'; return; }
+  api(`/api/projects/${project}/selection-translate`, { method: 'POST', body: JSON.stringify({ text: quote }) }).then(result => {
+    if (token !== selectionTranslateEpoch || current?.id !== project || !card.isConnected || card.hidden) return;
+    body.classList.remove('is-loading');
+    body.textContent = result?.text || '译文为空，请重试。';
+    card.querySelector('[data-translate-copy]').disabled = false;
+    positionSelectionTranslate(card, parseFloat(card.style.left), parseFloat(card.style.top));
+  }).catch(error => {
+    if (token !== selectionTranslateEpoch || current?.id !== project || !card.isConnected || card.hidden) return;
+    body.classList.remove('is-loading');
+    body.textContent = error?.message || '翻译失败，请重试。';
+    positionSelectionTranslate(card, parseFloat(card.style.left), parseFloat(card.style.top));
+  });
+}
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && document.getElementById('selection-translate')?.hidden === false) { closeSelectionTranslate(); return; }
+  if (event.key === 'Escape' && document.getElementById('output-selection')?.hidden === false) { hideTextSelection(); return; }
   if (event.key === 'Escape' && historyOpen && !document.querySelector('dialog[open]')) { historyOpen = false; renderHistory(); document.querySelector('[data-action=history]')?.focus(); }
   if (event.target.id === 'chat-input' && event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault(); event.target.form?.requestSubmit();
@@ -1821,7 +3067,16 @@ document.addEventListener('keydown', event => {
 });
 
 window.addEventListener('writing-ready', () => { if (current) renderOutput(); });
-api('/api/state').then(data => { state = data; const saved = JSON.parse(localStorage.getItem('methodatlas-view') || 'null'); if (saved && data.projects.some(p => p.id === saved.projectId)) openProject(saved.projectId,saved.conversationId); else home(); }).catch(error => { document.getElementById('app').innerHTML = `<main class="home"><div class="home-content"><h1>MethodAtlas 后端未启动</h1><p class="summary-text">${esc(error.message)}<br>请按 README 启动 Python 服务后刷新。</p></div></main>`; });
+api('/api/state?summary=1').then(async data => {
+  state = data;
+  const invited = await window.MethodAtlasCollaboration?.acceptLink();
+  if (invited) { state = await api('/api/state?summary=1'); return openProject(invited); }
+  const saved = JSON.parse((globalThis.MethodAtlasStorage?.local || localStorage).getItem('methodatlas-view') || 'null');
+  if (saved && data.projects.some(p => p.id === saved.projectId)) openProject(saved.projectId,saved.conversationId); else home();
+}).catch(error => {
+  if (error.status === 401) return window.MethodAtlasCollaboration?.login();
+  document.getElementById('app').innerHTML = `<main class="home"><div class="home-content"><h1>暂时无法打开工作台</h1><p class="summary-text">${esc(error.message)}</p><button type="button" onclick="location.reload()">重试</button></div></main>`;
+});
 
 window.addEventListener('message', event => {
   const frame=document.getElementById('html-preview');

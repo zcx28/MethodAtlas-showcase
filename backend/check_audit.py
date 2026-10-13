@@ -130,8 +130,11 @@ def main():
                 service.research.run(novelty)
             assert store.task(novelty)['status'] == 'succeeded', store.task(novelty)
             assert 'controlled source timeout' not in store.artifact(project, store.task(novelty)['artifact_id'])['versions'][0]['body']
-            assert any('超时' in gap for gap in store.task(novelty)['checkpoint']['audit_review_evidence']['gaps'])
-            assert 'controlled source timeout' in (store.root / 'logs' / 'errors.jsonl').read_text()
+            from .errors import public_error
+            safe_timeout = public_error(TimeoutError())
+            assert safe_timeout['code'] == 'timeout'
+            assert any(safe_timeout['message'] in gap for gap in store.task(novelty)['checkpoint']['audit_review_evidence']['gaps'])
+            assert 'controlled source timeout' in (store.root / 'logs' / 'errors.jsonl').read_text(encoding='utf-8')
             controls['mode'] = 'citation'
             citation = submit(); service.research.run(citation)
             assert store.task(citation)['status'] == 'succeeded'

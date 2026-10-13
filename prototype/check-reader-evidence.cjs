@@ -15,6 +15,17 @@ assert.equal(highlightedSource('Exact claim',page,page.blocks[2],evidence),'Exac
 assert.equal(readerEvidence(page,{page:1,quote:'Exact claim'}),null,'Ambiguous legacy quote must not highlight first occurrence');
 assert.equal(readerEvidence(page,{...focus,quote:'Invented claim'}),null);
 assert.equal(readerEvidence(page,{...focus,page:2}),null);
+const wrappedQuote='An expressive policy class for offline\nlearning.';
+const wrapped={page:1,text:wrappedQuote+'\nAn expressive policy\nclass for offline learning.',blocks:[
+ {start:0,text:wrappedQuote,rect},{start:wrappedQuote.length+1,text:'An expressive policy\nclass for offline learning.',rect:secondRect}]};
+wrapped.layout=wrapped.blocks.map(block=>({...block,kind:'paragraph'}));
+assert.equal(wrapped.text.split(wrappedQuote).length-1,1,'Raw source has exactly one matching wrap');
+assert.equal(wrapped.text.replace(/\s+/g,' ').split(wrappedQuote.replace(/\s+/g,' ')).length-1,2,'Normalized source has two matches');
+const unlocated={page:1,start:null,end:null,quote:wrappedQuote};
+assert.equal(readerEvidence(wrapped,unlocated),null,'Explicitly unlocated duplicate must not fall back to the raw first occurrence');
+context.detail.focus=unlocated;
+assert.ok(!renderResponsive({kind:'pdf',pages:[wrapped]}).includes('<mark'),'Unlocated source must stay unpainted in responsive rendering');
+assert.ok(readerEvidence({page:1,text:'Unique legacy source.'},{page:1,quote:'Unique legacy source.'}),'Legacy entries without offset fields retain their unique-source fallback');
 const cross={page:1,text:'one\ntwo',blocks:[{start:0,text:'one',rect},{start:4,text:'two',rect:secondRect}]};
 const across=readerEvidence(cross,{page:1,start:1,end:6,quote:'ne\ntw'});
 assert.equal(highlightedSource('one',cross,cross.blocks[0],across),'o<mark class="reader-evidence">ne</mark>');
@@ -38,5 +49,5 @@ context.detail.focus={page:1,start:0,end:7,quote:'one\ntwo'};
 html=renderResponsive({kind:'pdf',pages:[{...cross,layout:[{...cross.blocks[0],kind:'paragraph'},{...cross.blocks[1],kind:'formula'}]}]});
 assert.ok(html.includes('原文定位'),'Partial paragraph/formula mapping needs complete source fallback');
 assert.ok(html.includes('<mark class="reader-evidence">one\ntwo</mark>'));
-assert.match(code,/readerMode = focus && !focus.readingPosition \? 'responsive'/,'All citation entry points prefer webpage');
+assert.match(code,/readerMode = saved\?\.mode \|\| window\.MethodAtlasSettings/,'Citation entry preserves the chosen reader; new readers default to PDF');
 console.log('PASS: citation web-reader checks');

@@ -97,6 +97,7 @@ export function PaperLayout({base, version, dirty, blocked, prepare, preview, on
     link.href=url;link.download=`论文排版-v${layout.version_no}.pdf`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   });
   const stale=dirty||layout?.version_id!==version;
+  if (!layout && !busy && !blocked && !error && !preview) return null;
   return <section className="writing-layout" aria-label="AI 论文排版">
     <div className="paper-layout-actions paper-layout-top-actions">
       <button className="paper-layout-generate" type="button" disabled={busy||blocked} onClick={generate}>{busy?'正在处理…':'AI 一键排版'}</button>

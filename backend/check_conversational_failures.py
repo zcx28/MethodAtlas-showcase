@@ -1,6 +1,6 @@
 """Real Harness explanation, provider fallback, terminal persistence and fresh requests."""
 import json
-import tempfile
+from .check_support import temporary_directory
 import threading
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -8,6 +8,7 @@ from unittest.mock import patch
 from .app import Service
 from .agent import ProjectTools
 from .errors import AppError
+from .check_support import temporary_directory
 
 
 def main():
@@ -27,7 +28,7 @@ def main():
             self.send_response(200);self.send_header('Content-Type','text/event-stream');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
     server=ThreadingHTTPServer(('127.0.0.1',0),Provider);threading.Thread(target=server.serve_forever,daemon=True).start()
     try:
-        with tempfile.TemporaryDirectory() as directory, patch.object(Service,'schedule'):
+        with temporary_directory() as directory, patch.object(Service,'schedule'):
             service=Service(Path(directory)/'missing',Path(directory));store=service.store
             try:
                 service.research.key='controlled';service.research.base_url=f'http://127.0.0.1:{server.server_port}'
@@ -45,7 +46,7 @@ def main():
                 assert store.task(first['id'])['status']=='failed'
                 assert partial['artifact_id'] not in {a['id'] for a in service.project_state(p)['artifacts']}
                 assert store.artifact(p,partial['artifact_id']), 'Draft was deleted'
-                assert 'private_function' in (Path(directory)/'logs/errors.jsonl').read_text()
+                assert 'private_function' in (Path(directory)/'logs/errors.jsonl').read_text(encoding='utf-8')
                 # A later incomplete revision must not replace a delivered version.
                 store.run("UPDATE tasks SET status='succeeded' WHERE id=?", (first['id'],))
                 revision=task('修改原成果')

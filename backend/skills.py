@@ -55,6 +55,22 @@ class Skills:
     def __init__(self, service):
         self.service, self.store = service, service.store
         self.store.run("CREATE TABLE IF NOT EXISTS personal_skills(id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'active', share_token TEXT UNIQUE, share_version TEXT)")
+        self.store.run('CREATE TABLE IF NOT EXISTS personal_skill_owners(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL)')
+
+    def owner(self, user, ident):
+        if user and not self.store.one('SELECT 1 FROM personal_skill_owners WHERE id=? AND owner_id=?', (ident, user['id'])):
+            raise PermissionError('个人 Skill 不属于当前账号')
+
+    def source_visible(self, item, user):
+        if user:
+            source = item['source']
+            try:
+                self.service.collaboration.project(user, item['project_id'])
+                if source.get('conversation_id'):
+                    self.service.collaboration.conversation(user, source.get('project_id', item['project_id']), source['conversation_id'])
+            except PermissionError:
+                item = {**item, 'source': {'unavailable': True}}
+        return item
 
     def get(self, ident, version=None):
         row = self.store.one('SELECT a.project_id,s.* FROM personal_skills s JOIN artifacts a ON a.id=s.id WHERE s.id=?', (ident,))
@@ -68,20 +84,26 @@ class Skills:
                 'fields':current['payload']['fields'], 'source':current['payload']['source'],
                 'versions':[{'id':v['id'], 'number':v['version_no']} for v in item['versions']]}
 
-    def list(self):
-        return [self.get(row['id']) for row in self.store.all("SELECT id FROM personal_skills WHERE status<>'deleted' ORDER BY rowid DESC")]
+    def list(self, user=None):
+        with self.store.transaction():
+            rows = self.store.all("SELECT s.id FROM personal_skills s JOIN personal_skill_owners o ON o.id=s.id WHERE o.owner_id=? AND s.status<>'deleted' ORDER BY s.rowid DESC", (user['id'],)) if user else self.store.all("SELECT id FROM personal_skills WHERE status<>'deleted' ORDER BY rowid DESC")
+            return [self.source_visible(self.get(row['id']), user) for row in rows]
 
-    def draft(self, project, body):
+    def draft(self, project, body, user=None):
         source = self.store.task(body.get('task_id'))
         if not source or source['project_id'] != project or source['status'] != 'succeeded' or source['kind'] == 'skill':
             raise ValueError('请选择当前项目已完成的研究对话')
+        if user:
+            self.service.collaboration.project(user, project, write=True)
+            self.service.collaboration.conversation(user, project, source['conversation_id'])
         instruction = text(body.get('instruction', '提炼可复用研究方法'), 4000)
         request = text(body.get('request_id'), 100)
         if not request:
             raise ValueError('缺少提炼请求标识')
         fingerprint = hashlib.sha256(json_text(body).encode()).hexdigest()
+        draft_key = 'skill-draft:' + project + (':' + user['id'] if user else '')
         with self.store.transaction() as db:
-            old = db.execute('SELECT result FROM file_commits WHERE task_id=? AND call_id=?', ('skill-draft:'+project, request)).fetchone()
+            old = db.execute('SELECT result FROM file_commits WHERE task_id=? AND call_id=?', (draft_key, request)).fetchone()
             if old:
                 saved = json.loads(old['result'])
                 if saved['fingerprint'] != fingerprint:
@@ -90,9 +112,9 @@ class Skills:
                 if 'skill_draft' in prior['refs']:
                     return {'draft_id':prior['id'], 'fields':prior['refs']['skill_draft'], 'usage':prior['refs'].get('usage', [])}
                 raise ValueError(prior['error'] or '提炼尚未完成；原方法未改变')
-            task = self.service.writing.task(project, instruction, status='running', conversation=source['conversation_id'])
+            task = self.service.writing.task(project, instruction, status='running', conversation=source['conversation_id'], user=user)
             db.execute("UPDATE tasks SET kind='skill' WHERE id=?", (task['id'],))
-            db.execute('INSERT INTO file_commits VALUES(?,?,?)', ('skill-draft:'+project, request, json_text({'fingerprint':fingerprint,'task_id':task['id']})))
+            db.execute('INSERT INTO file_commits VALUES(?,?,?)', (draft_key, request, json_text({'fingerprint':fingerprint,'task_id':task['id']})))
             task = self.store.task(task['id'])
         try:
             source_messages = self.store.prior_messages(source) + [dict(row) for row in self.store.all('SELECT id,role,text FROM messages WHERE conversation_id=? AND task_id=? ORDER BY created', (source['conversation_id'], source['id']))]
@@ -114,20 +136,31 @@ class Skills:
             self.service.research.fail(task, error)
             raise
 
-    def change(self, project, action, body):
+    def change(self, project, action, body, user=None):
         if not self.store.project(project):
             raise ValueError('项目不存在')
         request = text(body.get('request_id'), 100)
         if not request:
             raise ValueError('缺少稳定请求标识')
         fingerprint = hashlib.sha256(json_text([project, action, body]).encode()).hexdigest()
+        commit_key = 'personal-skills' + (':' + user['id'] if user else '')
         with self.store.transaction() as db:
-            old = db.execute("SELECT result FROM file_commits WHERE task_id='personal-skills' AND call_id=?", (request,)).fetchone()
+            if user:
+                self.service.collaboration.project(user, project, write=True)
+                if body.get('id'):
+                    self.owner(user, body['id'])
+                if body.get('draft_id'):
+                    draft = self.store.task(body['draft_id'])
+                    if not draft or draft['refs'].get('initiated_by') != user['id']:
+                        raise PermissionError('提炼草稿不属于当前账号')
+                    self.service.collaboration.conversation(user, project, draft['conversation_id'])
+            old = db.execute('SELECT result FROM file_commits WHERE task_id=? AND call_id=?', (commit_key, request)).fetchone()
             if old:
                 result = json.loads(old['result'])
                 if result['fingerprint'] != fingerprint:
                     raise ValueError('请求标识已用于其他操作')
-                return result['value']
+                value = result['value']
+                return self.source_visible(value, user) if 'source' in value else value
             baseline = self.get(body['id']) if body.get('id') else None
             if baseline and body.get('base_version_id') != baseline['version_id']:
                 raise ValueError('Skill 已有新版，请重新打开；未覆盖旧内容')
@@ -153,11 +186,18 @@ class Skills:
                 number = baseline['version_no'] + 1 if ident == (baseline or {}).get('id') else 1
                 version = new_id('skillversion')
                 owner_project = baseline['project_id'] if number > 1 else project
+                if user:
+                    self.service.collaboration.project(user, owner_project, write=True)
                 task = self.service.writing.task(owner_project, '确认保存个人研究 Skill')
+                if user:
+                    db.execute('UPDATE tasks SET refs=? WHERE id=?', (json_text({**task['refs'], 'initiated_by': user['id']}), task['id']))
                 db.execute("UPDATE tasks SET kind='skill' WHERE id=?", (task['id'],))
                 if number == 1:
                     db.execute('INSERT INTO artifacts VALUES(?,?,?,?,?,?)', (ident, owner_project, fields['name'], 'personal_skill', now(), now()))
                     db.execute('INSERT INTO personal_skills(id) VALUES(?)', (ident,))
+                    if user:
+                        db.execute('INSERT INTO personal_skill_owners VALUES(?,?)', (ident, user['id']))
+                        db.execute("INSERT INTO artifact_scopes VALUES(?,?,'private')", (ident, user['id']))
                 db.execute('INSERT INTO artifact_versions(id,artifact_id,task_id,version_no,title,body,citations,materials,created,kind,payload) VALUES(?,?,?,?,?,?,\'[]\',\'[]\',?,?,?)',
                     (version, ident, task['id'], number, fields['name'], markdown(fields, ident.replace('_','-')), now(), 'personal_skill', json_text({'fields':fields, 'source':source})))
                 db.execute('UPDATE artifacts SET title=?,updated=? WHERE id=?', (fields['name'], now(), ident))
@@ -180,8 +220,8 @@ class Skills:
                 result = {'id':ident, 'deleted':True} if action == 'delete' else self.get(ident)
             else:
                 raise ValueError('未知操作；系统默认能力只允许复制定制')
-            db.execute('INSERT INTO file_commits VALUES(?,?,?)', ('personal-skills', request, json_text({'fingerprint':fingerprint, 'value':result})))
-            return result
+            db.execute('INSERT INTO file_commits VALUES(?,?,?)', (commit_key, request, json_text({'fingerprint':fingerprint, 'value':result})))
+            return self.source_visible(result, user) if 'source' in result else result
 
     def shared(self, token):
         row = self.store.one("SELECT id,share_version FROM personal_skills WHERE share_token=? AND status='active'", (token,))
@@ -190,7 +230,7 @@ class Skills:
         item = self.get(row['id'], row['share_version'])
         return markdown(item['fields'], item['id'].replace('_','-'))
 
-    def bind(self, prompt):
+    def bind(self, prompt, user=None):
         versions = set(re.findall(r'skillversion_[A-Za-z0-9_]+', prompt))
         if not versions:
             return None
@@ -200,6 +240,7 @@ class Skills:
         row = self.store.one('SELECT artifact_id FROM artifact_versions WHERE id=? AND kind=\'personal_skill\'', (version,))
         if not row:
             raise ValueError('个人 Skill 版本不存在')
+        self.owner(user, row['artifact_id'])
         item = self.get(row['artifact_id'], version)
         if item['status'] != 'active':
             raise ValueError('个人 Skill 已归档，恢复后才能调用')

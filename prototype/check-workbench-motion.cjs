@@ -124,7 +124,7 @@ server.listen(Number(process.env.MOTION_PREVIEW_PORT)||0,'127.0.0.1',async()=>{
     assert.equal(await page.locator('[data-action=reader-original], [data-action=reader-responsive]').count(),0,'PDF toggle is hidden after leaving full screen');
     await page.locator('#sources-panel .breadcrumb-back').click();
     const collect=async id=>{await page.locator(`#subscription-pending [data-sub-candidate=${id}]`).click();await page.locator('[data-sub-choice=collected]').click();};
-    failChoice=true;await collect('one');await page.getByRole('alert').filter({hasText:'收录失败'}).first().waitFor();
+    failChoice=true;await collect('one');await page.getByRole('status').filter({hasText:'收录失败'}).first().waitFor();
     assert.equal(await page.locator('[data-source-id=one]').count(),0,'failure never inserts a source');
     assert.equal(await page.evaluate(()=>motionEvents.filter(e=>e.row).length),0,'failure has no success motion');
     failChoice=false;await collect('one');await page.locator('[data-source-id=one]').waitFor();await page.waitForTimeout(220);
@@ -134,7 +134,7 @@ server.listen(Number(process.env.MOTION_PREVIEW_PORT)||0,'127.0.0.1',async()=>{
     await page.waitForTimeout(3200);assert.ok(polls>pollBefore);assert.equal(await page.evaluate(()=>motionEvents.filter(e=>e.row).length),rowCount,'polling never replays motion');
     assert.equal(await page.evaluate(()=>motionEvents.filter(e=>e.name==='proposal-enter').length),proposalEnters,'unrelated updates do not replay proposal entry');
     const proposal=page.locator('.writing-proposal');
-    failAccept=true;await proposal.getByRole('button',{name:'接受',exact:true}).click();await page.getByRole('alert').filter({hasText:'接受失败'}).waitFor();
+    failAccept=true;await proposal.getByRole('button',{name:'接受',exact:true}).click();await page.getByRole('status').filter({hasText:'接受失败'}).waitFor();
     assert.equal(await proposal.getAttribute('data-state'),'pending');
     assert.match(await page.locator('[contenteditable=true]').innerText(),/原文需要核对/);
     failAccept=false;await proposal.getByRole('button',{name:'接受',exact:true}).click();

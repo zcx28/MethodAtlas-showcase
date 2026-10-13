@@ -16,7 +16,7 @@ const { chromium } = require('playwright');
       if (name === '/api/state') return route.fulfill({json:{projects:[project]}});
       if (name === '/api/projects/p') return route.fulfill({json:project});
       if (name === '/api/skills') return route.fulfill({json:[]});
-      const files = {'/':['index.html','text/html'],'/app.js':['app.js','text/javascript'],'/home.css':['home.css','text/css'],'/report.css':['report.css','text/css'],'/assets/methodatlas-mark.png':['assets/methodatlas-mark.png','image/png']};
+      const files = {'/':['index.html','text/html'],'/app.js':['app.js','text/javascript'],'/home.css':['home.css','text/css'],'/workspace.css':['workspace.css','text/css'],'/report.css':['report.css','text/css'],'/assets/methodatlas-mark.png':['assets/methodatlas-mark.png','image/png']};
       if (files[name]) return route.fulfill({body:fs.readFileSync(path.join(__dirname,files[name][0])),contentType:files[name][1]});
       return route.fulfill({body:'',contentType:name.endsWith('.js') ? 'text/javascript' : 'text/plain'});
     });
@@ -42,10 +42,11 @@ const { chromium } = require('playwright');
       assert.equal(await page.locator('#chat-input').evaluate(n=>n===document.activeElement),true);
     }
     for (const mode of ['novelty','citation']) {
+      const draft=await page.locator('#chat-input').inputValue();
       await launcher.click();
       await page.locator('#skill-workbench [data-value="review"]').click();
       await page.locator(`#skill-workbench [data-audit-mode="${mode}"]`).click();
-      assert.equal(await page.locator('#chat-input').inputValue(),await page.evaluate(mode=>auditModes[mode].prompt,mode));
+      assert.equal(await page.locator('#chat-input').inputValue(),draft+'\n\n'+await page.evaluate(mode=>auditModes[mode].prompt,mode));
     }
     assert.equal(await page.evaluate(()=>conversation.messages.length),0);
     await page.evaluate(()=>{pending=true;syncComposer();});
@@ -60,28 +61,31 @@ const { chromium } = require('playwright');
     await page.keyboard.press('Escape');
     await page.setViewportSize({width:1280,height:900});
     await page.locator('#chat-input').fill('尚未发送的草稿');
+    await page.locator('.app-header [data-panel=sources-panel]').click();
+    await page.locator('.app-header [data-panel=output-panel]').click();
     const widths = () => page.locator('.panels>.panel').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().width));
-    assert.ok((await widths())[2] >= 220, '成果区常驻');
+    assert.ok((await widths())[2] >= 256, '显式展开的成果区可用');
+    await page.getByRole('separator').first().waitFor();
     assert.equal(await page.getByRole('separator').count(),2);
     const before = await widths();
     await page.getByRole('separator').first().press('ArrowRight');
     assert.ok((await widths())[0] > before[0] + 20);
     assert.equal(await page.locator('#chat-input').inputValue(),'尚未发送的草稿');
-    // Default-open progress must collapse, but explicit or currently read blocks stay open.
+    // Progress starts collapsed; explicit choices, focus and scroll survive polling.
     await page.evaluate(() => {
       window.task = {id:'t',status:'running',tools:[],files:[],citations:[],events:[{status:'tool_start',message:'读取材料',step_id:'read'}],plan:[{id:'read',title:'读取材料',status:'in_progress'}]};
-      window.startTask = () => { disclosureState.clear(); conversation.messages = [{role:'user',text:'请求',task}]; renderChat(true); };
-      window.completeTask = () => { task.status='succeeded'; conversation.messages.push({role:'assistant',text:'已完成',task}); renderChat(); };
+      window.startTask = () => { disclosureState.clear(); pending=true;liveTask=task; conversation.messages = [{role:'user',text:'请求',task}]; renderChat(true); };
+      window.completeTask = () => { task.status='succeeded';pending=false;liveTask=null; conversation.messages.push({role:'assistant',text:'已完成',task}); renderChat(); };
       startTask();
     });
-    await page.waitForTimeout(50); // Let native default-open toggle events fire.
+    assert.equal(await page.locator('.execution-record[open]').count(),0,'running starts collapsed');
     await page.evaluate(() => { renderChat(); completeTask(); });
     assert.equal(await page.locator('.execution-record[open]').count(),0);
     await page.evaluate(() => { task.status='running'; startTask(); });
-    await page.locator('.step-details>summary').click();
+    await page.locator('.execution-record>summary').click();
     await page.locator('#chat-input').fill('完成时保留我的展开选择');
     await page.evaluate(() => completeTask());
-    assert.equal(await page.locator('.execution-record[open] .step-details[open]').count(),1);
+    assert.equal(await page.locator('.execution-record[open]').count(),1);
     assert.equal(await page.locator('#chat-input').evaluate(n=>n===document.activeElement),true);
     assert.equal(await page.locator('#chat-input').inputValue(),'完成时保留我的展开选择');
     await page.evaluate(() => {
@@ -89,8 +93,8 @@ const { chromium } = require('playwright');
       task.events = Array.from({length:40},(_,i)=>({status:'tool_start',message:'阅读步骤 '+i,step_id:'read'}));
       renderChat();
     });
-    await page.locator('.step-details>summary').click();
-    await page.locator('.execution-record').evaluate(node=>{node.open=true;node.querySelector('.step-details').open=true;});
+    await page.locator('.execution-record>summary').click();
+    await page.locator('.execution-record').evaluate(node=>{node.open=true;});
     await page.locator('#chat-input').focus();
     await page.waitForFunction(()=>{const log=document.getElementById('chat-log');return log.scrollHeight > log.clientHeight + 160;});
     await page.evaluate(() => { disclosureState.clear(); document.getElementById('chat-log').scrollTop = 80; });
@@ -100,6 +104,93 @@ const { chromium } = require('playwright');
     assert.ok(Math.abs(await page.locator('#chat-log').evaluate(n=>n.scrollTop)-scroll)<2);
     await page.evaluate(() => renderChat(true));
     assert.ok(await page.locator('#chat-log').evaluate(n=>n.scrollHeight-n.clientHeight-n.scrollTop<2));
+    // Changed completion labels must close their real call, not leave a false unfinished row.
+    const pairing=await page.evaluate(()=>{
+      const events=[
+        {seq:1,status:'tool_start',message:'并行搜索论文摘要：机器人'},
+        {seq:2,status:'search_progress',message:'正在并行检索论文摘要：已取回 0 条候选，筛选后分批展示。'},
+        {seq:3,status:'search_progress',message:'正在并行检索论文摘要：已取回 3 条候选，筛选后分批展示。'},
+        {seq:4,status:'tool_done',message:'并行搜索论文摘要：机器人'},
+        {seq:5,status:'tool_start',message:'正在整理推荐论文'},
+        {seq:6,status:'tool_done',message:'已展示 3 篇推荐论文，可点击收录'}
+      ];
+      return {live:toolActions(events.slice(0,3)),done:toolActions(events),
+        failed:toolActions([{status:'tool_start',message:'正在读取成果'}, {status:'tool_failed',message:'读取失败'}]),
+        ambiguous:toolActions([{status:'tool_start',message:'读取甲'}, {status:'tool_start',message:'读取乙'}, {status:'tool_done',message:'新标题'}]),
+        html:renderProgress({id:'search',status:'succeeded',events})};
+    });
+    assert.equal(pairing.live.length,1);assert.match(pairing.live[0].detail,/3 条候选/);
+    assert.equal(pairing.done.length,2);assert.ok(pairing.done.every(row=>row.state==='done' && !row.detail));
+    assert.doesNotMatch(pairing.html,/未完成|0 条候选|正在整理推荐论文/);
+    assert.match(pairing.html,/已展示 3 篇推荐论文/);
+    assert.equal(pairing.failed.length,1);assert.equal(pairing.failed[0].state,'failed');
+    assert.equal(pairing.ambiguous.length,3,'ambiguous records must not fabricate a match');
+    // Flat rows, real summaries, tool pairing, keyboard, motion continuity and narrow widths.
+    await page.evaluate(() => {
+      task.events=[{seq:1,status:'tool_start',message:'正在阅读 · 原文 · 第二章',step_id:'read'}, {seq:2,status:'tool_done',message:'已阅读 · 原文 · 第二章',step_id:'read'}, {seq:3,status:'tool_start',message:'正在搜索 · 扩散策略',step_id:'compare'}];
+      task.plan=[{id:'read',title:'理解研究问题',status:'completed',summary:'已读取论文中的任务定义和实验条件。'}, {id:'compare',title:'比较方法的共同点',status:'in_progress'}];
+      task.status='running'; startTask();
+    });
+    const record=page.locator('.execution-record'), summary=record.locator(':scope > summary');
+    await summary.focus(); await page.keyboard.press('Enter');
+    assert.equal(await record.locator('.process-timeline > li').count(),4);
+    assert.equal(await record.locator('details').count(),0,'no nested tool groups');
+    assert.deepEqual(await record.locator('.process-row').evaluateAll(rows=>rows.map(n=>n.dataset.kind)),['thought','tool','thought','tool']);
+    assert.match(await record.textContent(),/原文 · 第二章/,'multi-part targets stay intact');
+    assert.equal(await record.locator('.process-indicator').evaluate(n=>getComputedStyle(n).animationName),'none','reduced motion has static state feedback');
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await page.waitForTimeout(100);
+    assert.equal(await record.locator('.process-indicator').evaluate(n=>getComputedStyle(n).animationName),'process-search');
+    const beforeTime=await record.locator('.process-indicator').evaluate(n=>n.getAnimations()[0].currentTime);
+    await page.evaluate(()=>renderChat());
+    assert.ok(await record.locator('.process-indicator').evaluate(n=>n.getAnimations()[0].currentTime)>=beforeTime,'polling does not restart motion');
+    for (const [text,motion] of [['正在读取材料','process-read'],['正在保存文件','process-save'],['正在执行实验','process-execute']]) {
+      await page.evaluate(text=>{task.events.push({seq:task.events.length+1,status:'tool_start',message:text});renderChat();},text);
+      assert.equal(await record.locator('.process-indicator').evaluate(n=>getComputedStyle(n).animationName),motion);
+    }
+    await page.evaluate(()=>{
+      task.plan.push({id:'new',title:'归纳比较结果',status:'in_progress'});
+      task.events.push({seq:9,status:'model',message:'正在处理请求'});renderChat();
+    });
+    assert.equal(await record.locator('[data-process-row="t:thought:new"]').evaluate(n=>getComputedStyle(n).animationName),'process-enter');
+    assert.equal(await record.locator('.process-indicator').evaluate(n=>getComputedStyle(n).animationName),'process-think');
+    await page.evaluate(()=>renderChat());
+    assert.equal(await record.locator('.process-row.enter').count(),0,'existing thoughts do not re-enter');
+    await page.setViewportSize({width:1280,height:900});
+    if(process.env.PROCESS_SCREENSHOT) await page.screenshot({path:process.env.PROCESS_SCREENSHOT+'-desktop.png'});
+    // Check the scoped component at mobile width; the surrounding workbench is a desktop layout.
+    const narrow=await browser.newPage();
+    await narrow.setViewportSize({width:390,height:844});
+    await narrow.setContent(await page.evaluate(()=>`<style>${document.querySelector('style').textContent}</style><main style="padding:24px;background:var(--surface)"><div class="message agent">${document.querySelector('.execution-record').outerHTML}</div></main>`));
+    await narrow.locator('.execution-record').evaluate(n=>n.open=true);
+    await narrow.waitForTimeout(250);
+    assert.ok(await narrow.locator('.execution-record').evaluate(n=>n.scrollWidth<=n.clientWidth && n.getBoundingClientRect().right<=innerWidth),'timeline fits a narrow column');
+    if(process.env.PROCESS_SCREENSHOT) await narrow.screenshot({path:process.env.PROCESS_SCREENSHOT+'-mobile.png'});
+    await narrow.close();
+    await summary.focus(); await page.keyboard.press('Space');
+    await page.evaluate(()=>renderChat());
+    assert.equal(await record.getAttribute('open'),null,'explicit collapse survives a new render');
+    await page.evaluate(()=>completeTask());
+    assert.equal(await record.locator('.process-indicator').evaluate(n=>getComputedStyle(n).animationName),'none');
+    const failure=await page.evaluate(()=>renderProgress({...task,status:'failed'}));
+    assert.match(failure,/执行未完成/);assert.match(failure,/data-motion="idle"/);
+    await page.setViewportSize({width:1280,height:900});
+    await page.emulateMedia({reducedMotion:'reduce'});
+    // A task owns its process and recommendations, in that order, while live and after completion.
+    await page.evaluate(()=>{
+      task.waits=[{id:'papers',payload:{kind:'papers',query:'论文',candidates:[],recommendation:{summary:'推荐结果检查',papers:[]}}}];
+      task.status='running';startTask();pending=false;renderChat();
+    });
+    const assertProcessBeforeResults=async()=>{
+      assert.equal(await page.locator('.execution-record').count(),1);
+      assert.equal(await page.locator('.paper-recommendations').count(),1);
+      assert.equal(await page.locator('.execution-record').evaluate(n=>Boolean(n.compareDocumentPosition(document.querySelector('.paper-recommendations')) & Node.DOCUMENT_POSITION_FOLLOWING)),true);
+    };
+    await assertProcessBeforeResults();
+    await page.evaluate(()=>completeTask());
+    await assertProcessBeforeResults();
+    assert.equal(await page.locator('.paper-recommendations').evaluate(n=>Boolean(n.compareDocumentPosition(document.querySelector('.answer-text')) & Node.DOCUMENT_POSITION_FOLLOWING)),true);
+    await page.evaluate(()=>{task.waits=[];});
     // Existing controls, upload transport and Studio version/list behavior stay intact.
     assert.ok(await page.locator('.conversation-row').count() > 0, 'the workbench column lists conversations');
     await page.evaluate(() => {
@@ -116,6 +207,18 @@ const { chromium } = require('playwright');
     await page.locator('#chat-input').fill('继续输入时变回发送');
     assert.equal(await page.locator('#chat-form [type=submit]').count(),1);
     await page.locator('#chat-input').fill('');
+    let releaseStop,stopStarted,stopRequests=0;const stopGate=new Promise(r=>releaseStop=r),stopReady=new Promise(r=>stopStarted=r);
+    await page.route('**/tasks/*/stop',async route=>{stopRequests++;stopStarted();await stopGate;await route.fulfill({status:503,json:{error:'停止请求失败，请重试。'}});});
+    await page.getByRole('button',{name:'停止生成',exact:true}).click();await stopReady;
+    await page.locator('#chat-input').fill('停止期间的新草稿');await page.locator('#chat-input').fill('');
+    assert.equal(await page.getByRole('button',{name:'停止生成',exact:true}).isEnabled(),false,'composer update must not unlock an in-flight stop');
+    await page.getByRole('button',{name:'停止生成',exact:true}).evaluate(button=>button.click());
+    await page.locator('#chat-input').fill('停止失败也保留草稿');
+    const stopResponse=page.waitForResponse(r=>r.url().endsWith('/stop'));releaseStop();await stopResponse;
+    await page.getByText('停止请求失败，请重试。',{exact:true}).waitFor();assert.equal(stopRequests,1);
+    assert.equal(await page.locator('#chat-input').inputValue(),'停止失败也保留草稿');
+    await page.locator('#chat-input').fill('');assert(await page.getByRole('button',{name:'停止生成',exact:true}).isEnabled());
+    await page.unroute('**/tasks/*/stop');
     await page.locator('#version-select').selectOption('v1');
     assert.match(await page.locator('#output-body').innerText(),/保留正文 1/);
 
@@ -158,10 +261,12 @@ const { chromium } = require('playwright');
     assert.equal(await page.locator('.figure-insight').count(),2,'all figures remain visible after polling');
     assert.equal(await page.locator('#chat-input').inputValue(),'结果展开也不能丢失草稿');
     assert.match(await page.locator('#output-body').innerText(),/保留当前成果/);
-    await figureDetails.first().locator('[data-action=citation]').click();
+    await figureDetails.first().locator('[data-action=citation]').hover();
+    await page.locator('.citation-preview [data-citation-open]').click();
     await page.waitForFunction(()=>detail?.paper?.version_id==='paper-v1');
     assert.equal(await page.evaluate(()=>artifact.id),'a','original-source navigation preserves the open artifact');
     assert.equal(await page.locator('#version-select').inputValue(),'v2');
+    await page.locator('.shell-nav [data-value=chat]').click();
     assert.equal(await page.locator('#chat-input').inputValue(),'结果展开也不能丢失草稿');
     assert.deepEqual(await page.evaluate(()=>[
       artifactKindLabel({kind:'html',title:'查新综述'}),
@@ -176,6 +281,6 @@ const { chromium } = require('playwright');
     await page.setViewportSize({width:1440,height:1100});
     await page.locator('.figure-insight').first().scrollIntoViewIfNeeded();
     await page.screenshot({path:path.join(screenshots,'ui-tweaks.png')});
-    console.log('PASS: Persistent Studio/resize/state, progress auto-collapse/user reading, scroll/focus/drafts, task controls, versions/list and multipart upload transport. Figure crops/source versions, multi-figure history, output type, and preserved workspace also verified. Mock API; not a backend integration check.');
+    console.log('PASS: Persistent Studio/resize/state, collapsed flat progress/state animations/user reading, scroll/focus/drafts, task controls, versions/list and multipart upload transport. Figure crops/source versions, multi-figure history, output type, and preserved workspace also verified. Mock API; not a backend integration check.');
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});

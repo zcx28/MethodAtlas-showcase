@@ -1,4 +1,4 @@
-"""Reproducible regression checks for source import, conversion, and persistence."""
+"""Reproducible Issue #27 checks for source import, conversion, and persistence."""
 from __future__ import annotations
 
 import json
@@ -145,20 +145,17 @@ def main():
             assert not quote_is_broad("Sentence one. Sentence two.")
             assert quote_is_broad("Sentence one. Sentence two. Sentence three.")
             assert quote_is_broad("x" * 421)
-            try:
-                agent_tools.call("write_file", {"title":"过宽引用", "kind":"html", "content":"<p>结论</p>",
-                                                 "citation_ids":[agent_read["evidence"][0]["id"]], "output_key":"broad-citation"})
-            except ValueError as exc:
-                assert "引用范围过大" in str(exc)
-            else:
-                raise AssertionError("broad evidence must be refined before saving")
+            # ADR 009 removes the mandatory quote-refinement gate; ownership remains enforced.
+            broad_file = agent_tools.call("write_file", {"title":"整段引用", "kind":"html", "content":"<p>结论</p>",
+                "citation_ids":[agent_read["evidence"][0]["id"]], "output_key":"broad-citation"})
+            assert service.file_version(project_id, broad_file["artifact_id"], broad_file["version_id"])["citations"][0]["paper_version_id"] == text["version_id"]
             precise_file = agent_tools.call("write_file", {"title":"精确引用", "kind":"html",
                 "content":f'<p>结论 <button data-citation="{precise["id"]}">原文</button></p>',
                 "citation_ids":[precise["id"]], "output_key":"precise-citation"})
             assert service.file_version(project_id, precise_file["artifact_id"], precise_file["version_id"])["citations"][0]["quote"] == precise["quote"]
 
             native, scan, rotated = sample_pdf("Layout paper"), scanned_pdf(), rotated_pdf()
-            with patch("pymupdf.Page.get_textpage_ocr", side_effect=RuntimeError("OCR unavailable for fallback check")):
+            with patch("pymupdf.Pixmap.pdfocr_tobytes", side_effect=RuntimeError("OCR unavailable for fallback check")):
                 upload = multipart(f"/api/projects/{project_id}/sources/files", [("layout.pdf",native),("scan.pdf",scan),("rotated.pdf",rotated),("invalid.pdf",b"not a pdf"),("parse-failure.pdf",b"%PDF-1.7\nmalformed")])
             assert upload["succeeded"] == 3 and upload["failed"] == 2
             assert {item["input"] for item in upload["items"] if item["result"] == "failed"} == {"invalid.pdf","parse-failure.pdf"}
@@ -237,6 +234,7 @@ def main():
                     raise AssertionError("an unresolved DOI must not become a metadata-only paper")
             issue_responses = [
                 (b"{}","application/json","https://doi.org/10.1234/issue"),
+                (b'{"message":{}}',"application/json","https://api.crossref.org/works/10.1234%2Fissue"),
                 (b"<html><body>Volume 19 Issue 2</body></html>","text/html","https://publisher.example/issue/19/2"),
             ]
             with patch("backend.literature._read_url", side_effect=issue_responses):

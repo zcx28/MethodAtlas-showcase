@@ -21,16 +21,24 @@ def main():
             store.run("UPDATE tasks SET status='running' WHERE id=?",(tid,))
             tools=ProjectTools(store,store.task(tid));tools.set_scope(False)
             cid=tools.read_material(paper)['evidence'][0]['id']
+            calls=[]
             def complete(task,system,context,role,**kwargs):
+                calls.append(role)
                 if role=='paper':
                     return {'claims':[{'text':'方法使用点云','quotes':[{'id':context['evidence'][0]['id'],'quote':'中文概述，不是逐字原句'}]}],'gaps':[]}
-                if role=='paper-select':return {'selected':[0],'gaps':[]}
+                if role=='paper-select':
+                    assert context['original_request']==task['prompt']
+                    return {'selected':[0],'gaps':[]}
                 raise AssertionError('Unexpected verification/review call: '+role)
             tools.research=SimpleNamespace(complete=complete)
             saved=tools.call('write_file',{'title':'综述','kind':'docx','content':'方法分析 [cite:'+cid+']','citation_ids':[cid],'output_key':'broad'})
             assert tools.call('write_file',{'title':'综述','kind':'docx','content':'方法分析 [cite:'+cid+']','citation_ids':[cid],'output_key':'broad'})==saved
             card=research_card(tools,paper,'分析方法')
             assert card['card']['claims'] and card['card']['verified'] is False
+            assert research_card(tools,paper,'分析方法')['reused']
+            tools.task={**tools.task,'prompt':'比较方法甲和方法乙的直接实验对照'}
+            assert not research_card(tools,paper,'分析方法')['reused']
+            assert calls.count('paper')==1 and calls.count('paper-select')==2, calls
             draft={'view':'comparison','summary':'研究范围','nodes':[{'name':'方法','summary':'分析概述','detail':'模型分析正文','conditions':None,'metrics':None,'limitations':None,'evidence':[]}],'gaps':[]}
             tools.call('write_file',{'title':'无逐句引用的分析','kind':'html','content':json.dumps(draft),'citation_ids':[],'output_key':'no-inline'})
             finding={'location':'模型描述的位置','quote':'并非逐字摘录','severity':'提示','finding':'分析意见','support':'全文核验','suggestion':'可继续研究','evidence_ids':[]}

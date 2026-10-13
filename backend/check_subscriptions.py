@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+from .errors import AppError
 from .state import Store
 from .progress import Progress
 from .subscriptions import Subscriptions
@@ -103,7 +104,13 @@ def main():
             with ThreadPoolExecutor(1) as pool:
                 future = pool.submit(restored.execute,project,subscription_id=first['id'])
                 assert entered.wait(10)
-                concurrent = restored.execute(project,subscription_id=second['id'])
+                try:
+                    restored.execute(project,subscription_id=second['id'])
+                except AppError as error:
+                    assert '本次未启动' in str(error)
+                else:
+                    raise AssertionError('manual busy run must not return historical success')
+                concurrent = restored.execute(project,automatic=True,subscription_id=second['id'])
                 assert sum(r['status']=='running' for r in concurrent['runs']) == 1
                 busy_created = restored.create(project, {'name':'检索期间创建'})
                 restored.execute(project, 'enable', subscription_id=busy_created['id'])
@@ -123,7 +130,12 @@ def main():
             result['candidates'] = [paper(i,'2026-09-22') for i in range(23,27)]
             assert restored.execute(quota_project,subscription_id=quota['id'])['runs'][0]['count'] == 2, 'model overflow was not safely capped'
             count = search.call_count
-            restored.execute(quota_project,subscription_id=quota['id'])
+            try:
+                restored.execute(quota_project,subscription_id=quota['id'])
+            except AppError as error:
+                assert '额度' in str(error)
+            else:
+                raise AssertionError('manual quota exhaustion must be explicit')
             assert search.call_count == count
             invalid_project = store.create_project('模型候选边界')
             invalid = restored.create(invalid_project, {'name':'无效ID','time':'09:00'})
@@ -196,7 +208,7 @@ def main():
                         assert False, 'cross-project/version material accepted'
                     except ValueError:
                         pass
-        store.db.close()
+        store.close()
     print('PASS: deferred enable, fixed selected versions/strategy, time and requirement edits, busy create, multi-subscription, consent, dedup, restart, catchup, failures')
 
 if __name__ == '__main__':

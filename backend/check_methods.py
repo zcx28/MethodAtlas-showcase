@@ -66,7 +66,10 @@ def main():
             plain['nodes'][0]['evidence'] = [alias]
             plain['opportunities'][0]['evidence'] = [alias]
             tools.call('write_file', dict(args, title='结构化引用', content=json.dumps(plain), output_key='plain'))
-            for invalid in [dict(content,nodes=[]), dict(content,nodes=[dict(content['nodes'][0],evidence=[])]),
+            # ADR 009 permits analysis without mandatory per-field evidence.
+            uncited = dict(content,nodes=[dict(content['nodes'][0],evidence=[])])
+            tools.call('write_file', dict(args,title='无逐字段引用',content=json.dumps(uncited),output_key='uncited'))
+            for invalid in [dict(content,nodes=[]),
                             dict(content,nodes=[dict(content['nodes'][0],evidence=['[cite:E999]'])]),
                             dict(content,nodes=[dict(content['nodes'][0],conditions='')])]:
                 try:
@@ -74,7 +77,7 @@ def main():
                 except ValueError:
                     pass
                 else:
-                    raise AssertionError('Unfounded research accepted')
+                    raise AssertionError('Malformed research or unknown citation accepted')
             updated = copy.deepcopy(content)
             updated['nodes'][0]['detail'] = '修订后仍只验证室内；<script>alert(1)</script>'
             revision = tools.call('write_file', dict(args,content=json.dumps(updated),artifact_id=saved['artifact_id'],base_version_id=saved['version_id']))
@@ -155,6 +158,10 @@ def main():
                 server.RequestHandlerClass.service = service
                 assert service.file_version(project,saved['artifact_id'],restored['version_id'])['materials'] == version['materials']
                 assert hashlib.sha256(service.file_path(project,version).read_bytes()).hexdigest() == version['payload']['sha256']
+                import sys
+                if '--browser' in sys.argv:
+                    import subprocess
+                    subprocess.run(['node','prototype/check-methods-reading.cjs',base,project],check=True)
             finally:
                 server.shutdown(); server.server_close()
             print('PASS methods/comparison/evolution; evidence, chat/scope, immutable revisions, restore retry/conflict/corruption/isolation, restart')

@@ -9,6 +9,14 @@ import sys
 root = Path(os.environ['REMOTE_FIXTURE_ROOT'])
 assert 'StrictHostKeyChecking=yes' in sys.argv
 assert 'PermitLocalCommand=no' in sys.argv
+if os.environ.get('REMOTE_FIXTURE_TEAM') == '1':
+    assert sys.argv[sys.argv.index('-F') + 1] == 'none'
+    assert Path(sys.argv[sys.argv.index('-i') + 1]).is_file()
+    for option in ('IdentityAgent=none', 'IdentitiesOnly=yes', 'GlobalKnownHostsFile=none',
+                   'PasswordAuthentication=no', 'KbdInteractiveAuthentication=no',
+                   'ForwardAgent=no', 'ProxyCommand=none', 'ProxyJump=none', 'ControlPath=none'):
+        assert option in sys.argv
+    assert any(value.startswith('UserKnownHostsFile=') for value in sys.argv)
 if '-G' in sys.argv:
     print('hostname 127.0.0.1\nport ' + os.environ['REMOTE_FIXTURE_PORT'] + '\nuser researcher\n')
     sys.exit()
@@ -49,7 +57,9 @@ elif (root / 'failed').exists():
     job['status'] = 'failed'
 file.write_text(json.dumps(job))
 if action in ('log', 'result'):
-    raw = ('中文日志\n' * 10000).encode() if action == 'log' else f"launches,score\n{job['launches']},0.75\n".encode()
+    raw = ('中文日志🙂\n' * 10000).encode() if action == 'log' or request.get('path') == 'unicode.txt' else f"launches,score\n{job['launches']},0.75\n".encode()
+    if action == 'log' and (root / 'log-bytes').exists():
+        raw = (root / 'log-bytes').read_bytes()
     if action == 'result' and request.get('path') == 'run.sh':
         raw = b'exit 1\n'
     offset = request.get('offset', 0)
