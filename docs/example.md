@@ -4,15 +4,17 @@
 
 ## 1. 导入资料并核对依据
 
-新建“机器人模仿学习”项目，在论文链接入口逐行添加：
+新建“机器人模仿学习”项目，在「文献库 → 添加来源 → 论文链接」逐行添加以下官方 PDF 直链：
 
 ```text
-https://doi.org/10.15607/rss.2023.xix.026
-https://doi.org/10.15607/rss.2023.xix.016
-https://doi.org/10.15607/rss.2024.xx.067
+https://www.roboticsproceedings.org/rss19/p026.pdf
+https://www.roboticsproceedings.org/rss19/p016.pdf
+https://www.roboticsproceedings.org/rss20/p067.pdf
 ```
 
-对应 Diffusion Policy、Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware、3D Diffusion Policy。论文版权属于各自作者与出版方；仓库只提供入口。下载失败时上传自己取得的 PDF，只有摘要时不要将其当成全文。
+分别对应 [Diffusion Policy](https://www.roboticsproceedings.org/rss19/p026.html)、[Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware](https://www.roboticsproceedings.org/rss19/p016.html)、[3D Diffusion Policy](https://www.roboticsproceedings.org/rss20/p067.html)。论文版权属于各自作者与出版方；仓库只提供入口。
+
+导入后先确认三项均显示已取得全文，再开始研究。DOI 可以用于核对论文身份，但不保证取得全文。PDF 直链失败时，从上面的官方页面下载后，在「上传文件」一次选择三份 PDF。直链导入时，标题可能显示为 p026、p016、p067，可按上面的对应关系核对。部分页面解析不完整时，切换原始 PDF 查看对应页；不要将摘要或元数据当成全文。
 
 勾选资料，发送：
 
@@ -22,9 +24,9 @@ https://doi.org/10.15607/rss.2024.xx.067
 
 ## 2. 修订并交付成果
 
-发送：“把刚才的比较整理成组会报告，保留引用，不补造实验数字。”在右侧核对成果，再请求补充比较条件和目前不能下结论的部分。
+发送：“把刚才的比较整理成组会报告，保留引用，不补造实验数字。”点击回答中的成果卡片核对报告，再发送：“请修订刚才的组会报告，在同一成果生成 v2，补充比较成立的条件和目前不能下结论的部分；保留引用和 v1。”检查历史版本，逐项核对涉及数字的原文。
 
-打开论文编辑器建立提纲，体验手动编辑、自动保存和 AI 修改提案。接受提案更新草稿；点击存档生成历史节点。下载可用格式，确认文件可以打开、来源可以回查。
+在「成果 → 新建文档」建立提纲，手动编辑后等待“已自动保存草稿”。选中文字，点击「编辑」并填写修改指令，核对 AI 差异提案后接受；在「更多操作 → 存档」生成历史节点。下载可用格式，确认文件可以打开、来源可以回查。
 
 ## 3. 两位成员接续工作
 

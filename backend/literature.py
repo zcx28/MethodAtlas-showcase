@@ -285,7 +285,8 @@ class _SourceRequest:
             raise ValueError("远程内容超过大小限制")
         chunks, size = [], 0
         while True:
-            connection._source_socket.settimeout(self.remaining())
+            if not response.isclosed():
+                connection._source_socket.settimeout(self.remaining())
             chunk = response.read1(min(65536, limit + 1 - size))
             self.remaining()
             if not chunk:
