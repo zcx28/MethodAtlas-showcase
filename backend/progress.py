@@ -871,13 +871,22 @@ class Progress:
                 db.execute('UPDATE tasks SET refs=? WHERE id=?',(json_text(task['refs']),task['id']))
             system = SYSTEM + ('\n' + COLLABORATION_SYSTEM if self.online else '')
             def summarize(context, allowed):
-                result = self.research.complete(task, system, context, 'progress', 8192)
+                sources = {f'activity-{i+1}': ident for i, ident in enumerate(sorted(allowed))}
+                aliases = {ident: alias for alias, ident in sources.items()}
+                context = {**context, 'source_ids':list(sources)}
+                if 'activities' in context:
+                    context['activities'] = [{**e, 'id':aliases[e['id']]} for e in context['activities']]
+                if 'summaries' in context:
+                    context['summaries'] = [{**i, 'sources':[aliases[s] for s in i['sources']]} for i in context['summaries']]
+                prompt = system + '\n本轮活动 id 是短编号。sources 只能从 source_ids 原样选择；work_state 的对象 id 不是活动依据。'
+                result = self.research.complete(task, prompt, context, 'progress', 8192)
                 try:
-                    return validate(result, allowed)
+                    part, heads = validate(result, set(sources))
                 except ValueError as error:
-                    corrected = self.research.complete(task, system, {**context, 'response_to_correct': result,
+                    corrected = self.research.complete(task, prompt, {**context, 'response_to_correct': result,
                         'format_error': str(error), 'correction': '仅修正返回格式；不能补造活动依据。无法支持的条目删除。'}, 'progress', 8192)
-                    return validate(corrected, allowed)
+                    part, heads = validate(corrected, set(sources))
+                return [{**i, 'sources':[sources[s] for s in i['sources']]} for i in part], heads
             for chunk in chunks:
                 part, heads = summarize({**context_info,'day': day, 'sections': sections, 'activities': chunk, 'instruction': instruction, 'previous': latest['body'] if latest else None}, {e['id'] for e in chunk})
                 items.extend(part); highlights.extend(heads)
