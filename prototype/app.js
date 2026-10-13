@@ -1889,13 +1889,20 @@ function answerTextContext(raw, task) {
 function renderAnswerInline(raw, {task,citations,numbers}) {
   return esc(raw).replace(/^#{1,6}\s+(.+)$/gm,'<strong>$1</strong>').replace(/\*\*([^*\n]+)\*\*/g,'<strong>$1</strong>').replace(/\[cite:([^\]]+)\]/g, (match,id) => { const c = citations.find(c => c.id === id); return c ? citationLink(c,'citation-inline',numbers.get(c.id)) : match; }).replace(/\[([^\]]+)\]\((\/api\/projects\/[^)]+\/download)\)/g,(match,label,url) => task?.files?.some(f => fileUrl(f.artifact_id,f.version_id) === url) ? '' : match);
 }
-function renderAnswerSources({unlinked,numbers}) {
-  return unlinked.length?`<span class="answer-sources"><span class="answer-sources-label">本次读取的原文 <span>未标注到具体句子</span></span><span class="answer-source-links">${unlinked.map(c=>citationLink(c,'citation-inline',numbers.get(c.id))).join('')}</span></span>`:'';
+function renderAnswerSources({unlinked,numbers}, collapse = true) {
+  if (!unlinked.length) return '';
+  const label = `本次读取的原文 <span>未标注到具体句子</span>`;
+  const links = `<span class="answer-source-links">${unlinked.map(c=>citationLink(c,'citation-inline',numbers.get(c.id))).join('')}</span>`;
+  if (collapse && unlinked.length > 12) {
+    const key = `answer-sources:${unlinked[0].id}`;
+    return `<span class="answer-sources"><details data-disclosure="${esc(key)}" ${disclosure(key)}><summary class="answer-sources-label">${label} · ${unlinked.length} 处</summary>${links}</details></span>`;
+  }
+  return `<span class="answer-sources"><span class="answer-sources-label">${label}</span>${links}</span>`;
 }
 // Notes and copied text keep the existing inline representation and source appendix.
 function renderAnswerInlineText(raw, task) {
   const context = answerTextContext(raw,task);
-  return renderAnswerInline(context.raw,context) + renderAnswerSources(context);
+  return renderAnswerInline(context.raw,context) + renderAnswerSources(context,false);
 }
 function answerTableRow(line) {
   const value = line.trim(), cells = [];
