@@ -8,6 +8,10 @@
 
 [在线体验](https://methodatlas.64-90-4-239.sslip.io/) · [评委体验路线](docs/example.md) · [使用说明](docs/usage.md) · [本地安装](docs/installation.md)
 
+## 项目 PPT 与展示视频
+
+2026-10-13 更新：[查看 / 下载项目 PPT](docs/assets/MethodAtlas_项目演示_定稿.pptx) · [播放 / 下载展示视频](https://github.com/zcx28/MethodAtlas-showcase/raw/refs/heads/main/docs/assets/MethodAtlas_展示视频.mp4)
+
 在线版使用邮箱验证码登录。登录后可以建立团队和项目，也可以接受绑定本人邮箱的项目邀请。具体演示项目由项目方提供；模型和服务器资源由团队配置并授权。
 
 ![团队与项目首页](docs/assets/home.png)
