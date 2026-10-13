@@ -26,6 +26,53 @@ from docx import Document
 import pymupdf
 
 
+def check_exploration_scope():
+    from .agent import ProjectTools
+    from .rag import run
+    from .paper_research import POLICY
+    with temporary_directory() as directory:
+        service = Service(Path(directory) / 'missing', Path(directory), background=False)
+        try:
+            store = service.store
+            project = store.projects()[0]['id']
+            conversation = store.conversations(project)[0]['id']
+            papers = [store.paste(project, title, title + ' original evidence') for title in ('Selected paper', 'Other paper')]
+            for paper in store.papers(project):
+                store.run('INSERT INTO paper_cards VALUES(?,?,?,?,?,?,?)',
+                          (conversation, paper['current_version_id'], 'Compare methods', json_text({'policy':POLICY}), 0, 1, paper['added_at']))
+            for only_selected in (False, True):
+                tid = service.message(project, conversation, {'text':'Compare the available methods',
+                    'selected_paper_ids':[papers[0]], 'client_message_id':'scope-' + str(only_selected)}, schedule=False)['task_id']
+                route = {'mode':'explore', 'only_selected':only_selected, 'reason':'Read methods and figures'}
+                store.run("UPDATE tasks SET status='running',checkpoint=? WHERE id=?", (json_text({'route':route}), tid))
+                for resumed in (False, True):
+                    task = store.task(tid)
+                    tools = ProjectTools(store, task)
+                    assert run(service.research, task, tools, {}) is None
+                    catalog = tools.call('list_materials', {})['materials']
+                    expected = {papers[0]} if only_selected else set(papers)
+                    assert {item['id'] for item in catalog} == expected, (only_selected, resumed, catalog)
+                    cards = tools.call('list_paper_cards', {})['cards']
+                    assert {card['paper_version_id'] for card in cards} == {item['version_id'] for item in catalog}
+                    assert store.task(tid)['scope_mode'] == ('selected' if only_selected else 'project')
+                store.run("UPDATE tasks SET status='succeeded' WHERE id=?", (tid,))
+            tid = service.message(project, conversation, {'text':'Only the selected papers',
+                'selected_paper_ids':[], 'client_message_id':'scope-empty'}, schedule=False)['task_id']
+            store.run("UPDATE tasks SET status='running',checkpoint=? WHERE id=?", (json_text({'route':route}), tid))
+            task = store.task(tid)
+            tools = ProjectTools(store, task)
+            try:
+                run(service.research, task, tools, {})
+            except ValueError as error:
+                assert '没有勾选项' in str(error)
+                assert tools.allowed is None, 'empty selection must not fall back to all project papers'
+            else:
+                raise AssertionError('empty restricted scope accepted')
+            print('PASS: exploration initializes and restores scoped material catalog and research cards without model setup calls')
+        finally:
+            service.close()
+
+
 def check_research_budgets():
     citation = {'id':'cite_' + '1' * 32, 'paper_id':'paper', 'paper_version_id':'version',
                 'page':1, 'block':1, 'quote':'x' * 20000}
@@ -80,6 +127,7 @@ def check_research_budgets():
 
 
 def main():
+    check_exploration_scope()
     check_research_budgets()
     references = References()
     ids = ['cite_' + f'{i:032x}' for i in range(200)]
@@ -813,6 +861,10 @@ def main():
             _, _, unknown_skill = submit('非法方法检查', 'skill-invalid', expected='failed')
             assert unknown_skill['error_info']['code'] == 'input' and not unknown_skill['files']
             print('PASS: Skill discussions cannot write, exploration loads the same method, missing results stay explicit and unknown Skills fail closed')
+            plans.extend([tool('list_materials', {}), tool('list_paper_cards', {}), final('已读取材料目录和研究卡列表。')])
+            _, _, catalog_task = submit('先查看材料目录和已有研究卡', 'exploration-catalog')
+            assert {t['name']:t['status'] for t in catalog_task['tools']} == {'list_materials':'succeeded', 'list_paper_cards':'succeeded'}
+            print('PASS: actual Harness reads material catalog and research cards before any model set_scope call')
             plans.append({'_http_error':{'status':402,'message':'Insufficient Balance'}})
             _, _, no_balance = submit('余额故障检查', 'no-balance', expected='failed')
             assert no_balance['error_info']['code'] == 'billing' and 'HTTP' not in no_balance['error'] and '余额不足' in no_balance['error'] and not no_balance['files']

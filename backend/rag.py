@@ -60,6 +60,7 @@ def run(research, task, tools, context):
         return model_view(name, tools.call(name, args), tools.references)
 
     def explore(reason):
+        tools.set_scope(plan['only_selected'])
         context['previous_scope'] = 'selected' if plan['only_selected'] else 'project'
         context['pipeline_handoff'] = {'reason': reason, 'read_versions': list(tools.read_versions),
                                        'baselines': plan.get('files', [])}

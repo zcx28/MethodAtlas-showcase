@@ -7,6 +7,7 @@
 npm run build:writing
 npm run check
 .venv/bin/python -m backend.check_link_import
+.venv/bin/python -m backend.check_harness
 .venv/bin/python -m backend.check_collaboration
 .venv/bin/python -m backend.check_reader_document
 .venv/bin/python -m backend.check_writing_drafts
@@ -22,6 +23,7 @@ Windows 使用 `.\.venv\Scripts\python.exe`；浏览器检查前设置 `$env:PYT
 2026-10-13 展示版本在 Python 3.12 与 Node.js 24 环境完成以下检查：
 
 - 编辑器构建、结构化修订、引用编号、对话队列与历史响应边界。
+- 探索式研究的材料范围初始化、限定材料过滤、研究卡读取与任务恢复；模型未先调用范围工具时，目录和研究卡仍能读取。
 - 本地受控认证服务下的真实 HTTP/SQLite：登录、CSRF、成员邀请、撤销权限、团队模型隔离、共享任务、评论、私人内容、活动与通知。
 - 连续原文阅读、跨页与多栏定位、公式后续文字、固定资料版本及图像片段。
 - 草稿自动保存、手动存档去重、历史恢复、保存冲突与访问隔离。
