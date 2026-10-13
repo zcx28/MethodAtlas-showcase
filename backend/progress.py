@@ -838,6 +838,8 @@ class Progress:
             if chunk:
                 chunks.append(chunk)
             def validate(result, allowed):
+                if isinstance(result, dict) and result.get('items') == [] and result.get('highlights') == '':
+                    result = {**result, 'highlights':[]}
                 if not isinstance(result, dict) or not isinstance(result.get('items'), list) or not isinstance(result.get('highlights'), list):
                     raise ValueError('回顾返回格式无效')
                 for item in result['items']:

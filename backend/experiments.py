@@ -303,7 +303,14 @@ class ExperimentGroups:
     def finish_step(self, project, ident, step, summary, user=None):
         from .remote import text
         with self.remote.lock:
-            group = self.active(project,ident, user=user)
+            group = self.get(project,ident, user=user)
+            self.executable(group)
+            self.remote.access(user, project, group['conversation_id'], group['spec']['server']['id'], execute=True)
+            if self.remote.online:
+                self.remote.access(self.remote.actor(group.get('authorized_by')), project, group['conversation_id'], group['spec']['server']['id'], execute=True)
+            # Archiving fixed evidence does not run SSH or extend the execution deadline.
+            if not group.get('authorized_at') or group['status'] not in ('active','paused','completed'):
+                raise ValueError('实验组尚未授权')
             if type(step) is not int or not 0 <= step < len(group['spec']['steps']):
                 raise ValueError('实验步骤无效')
             if self.busy(group):
