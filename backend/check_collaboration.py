@@ -305,6 +305,22 @@ def main():
                 assert request('/api/invitations/accept', {'token': invite['token']}, member)[0] == 200
                 assert request('/api/invitations/accept', {'token': invite['token']}, member)[0] == 200
                 assert len(request(root + '/members', cookie=member)[1]['members']) == 2
+                before_rename = request(root, cookie=owner)[1]
+                assert request(root + '/rename', {'name': '  共脑研究  '}, member)[0] == 403
+                assert request(root + '/rename', {'name': '越权'}, outsider)[0] == 403
+                for name in ('', ' ', '名' * 301, 42):
+                    assert request(root + '/rename', {'name': name}, owner)[0] == 400
+                status, renamed, _ = request(root + '/rename', {'name': '  共脑研究  '}, owner)
+                assert status == 200, renamed
+                after_rename = request(root, cookie=member)[1]
+                assert after_rename['id'] == project and after_rename['name'] == '共脑研究'
+                assert after_rename['papers'] == before_rename['papers']
+                assert [c['id'] for c in after_rename['conversations']] == [c['id'] for c in before_rename['conversations']]
+                assert next(p for p in request('/api/state', cookie=owner)[1]['projects'] if p['id'] == project)['name'] == '共脑研究'
+                assert request(root + '/manage/archive', {}, owner)[0] == 200
+                assert request(root + '/rename', {'name': '归档研究'}, owner)[0] == 200
+                assert request(root + '/manage/unarchive', {}, owner)[0] == 200
+                assert request(root + '/rename', {'name': 'Shared research'}, owner)[0] == 200
                 assert request(root + '/invite', {'email': 'outsider@example.com'}, member)[0] == 403
                 assert [p['id'] for p in request('/api/state', cookie=member)[1]['projects']] == [project]
                 assert len(request('/api/state', cookie=owner)[1]['projects']) == 2

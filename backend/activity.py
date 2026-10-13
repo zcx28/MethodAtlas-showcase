@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 
 LABELS = {
-    'project_created':'创建项目', 'project_migrated':'迁入已有项目', 'project_archive':'归档项目', 'project_unarchive':'恢复项目',
+    'project_created':'创建项目', 'project_migrated':'迁入已有项目', 'project_archive':'归档项目', 'project_unarchive':'恢复项目', 'project_renamed':'重命名项目',
     'member_invited':'邀请成员', 'member_joined':'加入项目', 'member_removed':'移除成员', 'invite_revoked':'撤销邀请', 'ownership_transferred':'转移项目负责人',
     'task_created':'创建研究任务', 'task_updated':'更新研究任务', 'task_completed':'确认任务完成',
     'paper_uploaded':'上传研究资料', 'artifact_published':'发布共享成果', 'artifact_draft_changed':'编辑成果草稿',

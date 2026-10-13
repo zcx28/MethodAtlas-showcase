@@ -41,12 +41,14 @@ class LinkImportChecks(unittest.TestCase):
                 pass
 
             def do_GET(self):
+                feed = b'<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>https://arxiv.org/abs/2403.03954</id><title>Public research paper</title><summary>Original abstract</summary><link title="pdf" href="https://arxiv.org/pdf/2403.03954"/></entry></feed>'
+                body = feed if self.path.startswith('/api/query') else raw
                 self.send_response(200)
-                self.send_header('Content-Type', 'application/pdf')
-                self.send_header('Content-Length', str(len(raw)))
+                self.send_header('Content-Type', 'application/atom+xml' if body == feed else 'application/pdf')
+                self.send_header('Content-Length', str(len(body)))
                 self.send_header('Connection', 'close')
                 self.end_headers()
-                self.wfile.write(raw)
+                self.wfile.write(body)
 
         publisher = ThreadingHTTPServer(('127.0.0.1', 0), Publisher)
         worker = threading.Thread(target=publisher.serve_forever, daemon=True)
@@ -54,7 +56,7 @@ class LinkImportChecks(unittest.TestCase):
         original_dns = literature.socket.getaddrinfo
 
         def resolve(hostname, *args, **kwargs):
-            if hostname == 'publisher.example':
+            if hostname in {'publisher.example', 'export.arxiv.org', 'arxiv.org'}:
                 return [(2, 1, 6, '', ('93.184.216.34', 80))]
             return original_dns(hostname, *args, **kwargs)
 
@@ -76,6 +78,20 @@ class LinkImportChecks(unittest.TestCase):
                     result = literature.import_links(store, project, {'links': ['http://publisher.example/paper.pdf']})
                     self.assertEqual(result['succeeded'], 1, result)
                     self.assertEqual(json.loads(store.papers(project)[0]['availability'])['fulltext'], 'downloaded')
+                    project = store.create_project('arXiv link import')
+                    result = literature.import_links(store, project, {'links': ['https://arxiv.org/abs/2403.03954']})
+                    self.assertEqual(result['items'][0].get('imported_as'), 'pdf', result)
+                    retry_project = store.create_project('Previously failed link')
+                    metadata = literature._arxiv_metadata('2403.03954')
+                    paper = literature._import_abstract(store, retry_project, metadata['title'], metadata['summary'], metadata,
+                                                       {'fulltext': 'failed', 'parse': 'abstract', 'error': 'Old connection error'})
+                    old_version = store.papers(retry_project)[0]['current_version_id']
+                    retried = literature.retry_literature(store, retry_project, paper)
+                    self.assertEqual(retried['paper_id'], paper)
+                    self.assertNotEqual(retried['version_id'], old_version)
+                    self.assertEqual(len(store.papers(retry_project)), 1)
+                    self.assertEqual(json.loads(store.papers(retry_project)[0]['availability'])['fulltext'], 'downloaded')
+                    self.assertIsNotNone(store.one('SELECT id FROM paper_versions WHERE id=?', (old_version,)))
                 finally:
                     store.close()
         finally:

@@ -1433,13 +1433,15 @@
   async function importLinks(form) {
     const projectId = addProjectId, generation = viewGeneration;
     const links = form.elements.links.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
-    const button = form.querySelector('[type=submit]'); button.disabled = true;
+    const button = form.querySelector('[type=submit]'); button.disabled = true; button.textContent = '正在获取论文…';
+    const progress = document.getElementById('source-results');
+    if (progress) progress.textContent = '正在查找并下载全文，通常需要几十秒；请稍候。';
     try {
       const result = await api(`/api/projects/${encodeURIComponent(projectId)}/sources/links`, {method:'POST',body:JSON.stringify({links})});
       await refreshImported(projectId,generation,result.items); renderResults(result.items,projectId,generation);
       toast(`${result.succeeded} 项导入成功${result.failed ? `，${result.failed} 项失败` : ''}。`);
     } catch (error) { renderResults([{result:'failed',input:'论文链接',error:error.message}],projectId,generation); toast(error.message); }
-    finally { if (button.isConnected) button.disabled = false; }
+    finally { if (button.isConnected) { button.disabled = false; button.textContent = '导入链接'; } }
   }
 
   async function importText(form) {

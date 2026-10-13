@@ -1227,6 +1227,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(name,str) or not name.strip() or len(name) > 300:
                     raise ValueError('项目名称无效')
                 return self.send_json(201, {'project_id':self.service.store.create_project(name)})
+            match = re.fullmatch(r'/api/projects/([^/]+)/rename', path)
+            if match:
+                return self.send_json(200, self.service.collaboration.rename_project(self.user, match[1], body))
             match = re.fullmatch(r'/api/projects/([^/]+)/conversations', path)
             if match:
                 if self.user:

@@ -330,6 +330,11 @@ function syncSortControl() {
   });
 }
 
+function projectMenu(project) {
+  if (state.collaboration && project.role !== 'owner') return '';
+  return `<details class="home-menu project-menu"><summary class="icon" aria-label="项目操作：${esc(project.name)}" title="项目操作">${icon('dots')}</summary><div><button type="button" data-action="rename-project" data-id="${esc(project.id)}">${icon('edit')}重命名</button></div></details>`;
+}
+
 function renderProjects() {
   const query = (window.MethodAtlasSearch?.listQuery('project') || '').trim().toLowerCase();
   const workspaceId = window.MethodAtlasCollaboration?.selectedWorkspace();
@@ -351,7 +356,32 @@ function renderProjects() {
   document.getElementById('collection-title').textContent = query ? '搜索结果' : '最近打开过的项目';
   syncSortControl();
   document.getElementById('project-count').textContent = query ? `${projects.length} / ${state.projects.length}` : `${projects.length} 个项目`;
-  grid.innerHTML = projects.map(project => `<button class="project-card nb-card" data-action="open-project" data-id="${esc(project.id)}"><span class="nb-card-top"><span class="nb-thumb">${icon('book')}</span></span><span class="nb-card-body"><h2>${esc(project.name)}</h2><small>${esc(new Date(project.updated).toLocaleDateString('zh-CN').replaceAll('/','.'))} 更新 · ${(project.paper_count ?? project.papers?.length ?? 0)} 个来源</small></span></button>`).join('') + `<button class="project-card nb-new" data-action="new-project"><span class="plus-circle">${icon('plus')}</span><span>新建项目</span></button>` + (projects.length ? '' : `<p class="no-project" role="status">${query ? '没有找到匹配的项目。' : '点击「新建」开始第一个研究主题。'}</p>`);
+  grid.innerHTML = projects.map(project => `<div class="project-item"><button class="project-card nb-card" data-action="open-project" data-id="${esc(project.id)}"><span class="nb-card-top"><span class="nb-thumb">${icon('book')}</span></span><span class="nb-card-body"><h2>${esc(project.name)}</h2><small>${esc(new Date(project.updated).toLocaleDateString('zh-CN').replaceAll('/','.'))} 更新 · ${(project.paper_count ?? project.papers?.length ?? 0)} 个来源</small></span></button>${projectMenu(project)}</div>`).join('') + `<button class="project-card nb-new" data-action="new-project"><span class="plus-circle">${icon('plus')}</span><span>新建项目</span></button>` + (projects.length ? '' : `<p class="no-project" role="status">${query ? '没有找到匹配的项目。' : '点击「新建」开始第一个研究主题。'}</p>`);
+}
+
+function syncProjectTitle() {
+  const title = document.querySelector('.project-title');
+  if (!title || !current) return;
+  title.textContent = title.title = current.name;
+  document.querySelector('.workspace-brand .project-menu>summary')?.setAttribute('aria-label', `项目操作：${current.name}`);
+  document.title = `MethodAtlas · ${current.name}`;
+}
+
+async function renameProject(id) {
+  const project = state.projects.find(item => item.id === id);
+  if (!project) return;
+  const value = await window.MethodAtlasTextInput('重命名项目', '项目名称（最多 300 字符）', current?.id === id ? current.name : project.name);
+  if (value === null) return;
+  const name = value.trim();
+  if (!name || value.length > 300) { toast('项目名称不能为空且最多 300 字符。'); return; }
+  try {
+    const saved = await api(`/api/projects/${encodeURIComponent(id)}/rename`, {method:'POST', body:JSON.stringify({name})});
+    const listed = state.projects.find(item => item.id === id);
+    if (listed) Object.assign(listed, saved);
+    if (current?.id === id) { current.name = saved.name; current.updated = saved.updated; syncProjectTitle(); }
+    if (document.getElementById('project-grid')) renderProjects();
+    toast('项目名称已更新。');
+  } catch (error) { toast(error.message); }
 }
 
 async function openProject(id, conversationId = null) {
@@ -1195,7 +1225,7 @@ function renderWorkspace() {
   lastStarted = null;
   loadQueue();
   document.getElementById('app').innerHTML = `<main class="workspace">
-    <header class="app-header"><div class="row workspace-brand"><button class="icon" data-action="toggle-panel" data-panel="sources-panel" aria-controls="sources-panel" aria-label="固定左栏">${icon('sidebarLeft')}</button><button class="icon workspace-back" data-action="home" aria-label="返回项目列表">${icon('back')}</button><span class="brandmark" aria-hidden="true"><img src="assets/methodatlas-mark.png?v=poster-20261013" alt=""></span><span class="project-title" title="${esc(current.name)}">${esc(current.name)}</span></div><div class="row workspace-actions" aria-label="工作区操作"><button class="icon" type="button" data-ai="open" aria-label="打开 AI 对话" title="打开 AI 对话">${icon('spark')}</button>${window.MethodAtlasSearch?.header() || ''}<button class="icon" data-action="toggle-panel" data-panel="output-panel" aria-controls="output-panel" aria-label="打开成果区">${icon('sidebarRight')}</button><button type="button" data-action="settings" class="pill">设置</button>${window.MethodAtlasCollaboration?.header() || ''}</div></header>
+    <header class="app-header"><div class="row workspace-brand"><button class="icon" data-action="toggle-panel" data-panel="sources-panel" aria-controls="sources-panel" aria-label="固定左栏">${icon('sidebarLeft')}</button><button class="icon workspace-back" data-action="home" aria-label="返回项目列表">${icon('back')}</button><span class="brandmark" aria-hidden="true"><img src="assets/methodatlas-mark.png?v=poster-20261013" alt=""></span><span class="project-title" title="${esc(current.name)}">${esc(current.name)}</span>${projectMenu(current)}</div><div class="row workspace-actions" aria-label="工作区操作"><button class="icon" type="button" data-ai="open" aria-label="打开 AI 对话" title="打开 AI 对话">${icon('spark')}</button>${window.MethodAtlasSearch?.header() || ''}<button class="icon" data-action="toggle-panel" data-panel="output-panel" aria-controls="output-panel" aria-label="打开成果区">${icon('sidebarRight')}</button><button type="button" data-action="settings" class="pill">设置</button>${window.MethodAtlasCollaboration?.header() || ''}</div></header>
     <div class="shell"><nav class="shell-nav" aria-label="工作台导航">${globalNav()}${shellNav()}<div class="shell-nav-bottom"><button data-action="settings" aria-label="设置" title="设置">${icon('settings')}</button></div><span class="shell-nav-indicator" aria-hidden="true"></span></nav><div class="workspace-content"><div class="panels"><button class="panel-backdrop" data-action="close-panels" aria-label="关闭侧栏" hidden></button><section class="panel" id="sources-panel" aria-label="来源区域"><div class="panel-head"><div class="row"><h2>来源</h2><span class="badge"></span></div><span aria-hidden="true">${icon('panel')}</span></div><div class="panel-body" id="source-body"></div><div id="history-area"></div></section>
       <div class="panel-resizer" role="separator" aria-orientation="vertical" aria-label="调整来源与对话宽度" aria-controls="sources-panel chat-panel" tabindex="0" data-split="0"></div>
       <section class="panel" id="chat-panel" aria-label="主要功能区"><div class="panel-head"><h2>对话</h2><div class="row"><span id="chat-tools" class="row"></span></div></div><div id="chat-body"></div></section>
@@ -2581,6 +2611,7 @@ async function refreshTask(taskId, generation, projectId, conversationId) {
   const outputsChanged = JSON.stringify(current.artifacts) !== JSON.stringify(latest.artifacts);
   const newOutputs = latest.artifacts.filter(item => !current.artifacts.some(old => old.id === item.id));
   current = latest;
+  syncProjectTitle();
   conversation = current.conversations.find(item => item.id === conversationId) || local || current.conversations[0];
   if (!conversation) { await home(true); return; }
   const tasks = conversation.messages.filter(m => m.role === 'user').map(m => m.task).filter(Boolean);
@@ -2664,6 +2695,7 @@ document.addEventListener('click', event => {
   if (action === 'save-answer') saveAnswer(target);
   if (action === 'home') home();
   if (action === 'open-project') openProject(target.dataset.id);
+  if (action === 'rename-project') { target.closest('details').open = false; void renameProject(target.dataset.id); }
   if (action === 'new-chat') newConversation();
   if (action === 'new-private-chat') newConversation(false, 'private');
   if (action === 'publish-answer') window.MethodAtlasCollaboration.publishAnswer(target.dataset.id).catch(error => toast(error.message));
@@ -3099,3 +3131,11 @@ window.addEventListener('methodatlas-open-reference', event => {
   const ref=event.detail;
   if(current?.papers.some(p=>p.id===ref?.paper_id))showPaper(ref.paper_id,1,ref.paper_version_id);
 });
+
+document.addEventListener('keydown', event => {
+  const menu = document.querySelector('.project-menu[open]');
+  if (event.key !== 'Escape' || !menu) return;
+  menu.open = false;
+  menu.querySelector('summary').focus();
+  event.preventDefault(); event.stopImmediatePropagation();
+}, true);

@@ -120,6 +120,20 @@ class Collaboration:
         self.project(user, project)
         return [dict(r) for r in self.store.all('SELECT m.user_id,m.role,u.email FROM project_members m JOIN collab_users u ON u.id=m.user_id WHERE m.project_id=? ORDER BY m.role DESC,u.email', (project,))]
 
+    def rename_project(self, user, project, body):
+        with self.store.transaction() as db:
+            if self.online or user:
+                self.project(user, project, owner=True)
+            name = name_text(body.get('name'), '项目名称')
+            item = self.store.project(project)
+            if not item:
+                raise ValueError('项目不存在')
+            if item['name'] != name:
+                db.execute('UPDATE projects SET name=?,updated=? WHERE id=?', (name, now(), project))
+                if user:
+                    self.event(project, user['id'], 'project_renamed', project, {'title': name, 'old_name': item['name']})
+            return dict(self.store.project(project))
+
     def invite(self, user, project, body):
         email = email_address(body.get('email'))
         token, ident = secrets.token_urlsafe(32), new_id('invite')
@@ -356,8 +370,8 @@ class Collaboration:
         match = re.match(r'^/api/projects/([^/]+)(?:/|$)', path)
         if match:
             project = match[1]
-            # Restoration of an archived project must remain possible.
-            self.project(user, project, write=mutation and not path.endswith('/manage/unarchive'))
+            # Archived projects still allow restoration and owner-controlled naming.
+            self.project(user, project, write=mutation and not path.endswith(('/manage/unarchive', '/rename')))
             conversation = re.search(r'/conversations/([^/]+)', path)
             if conversation:
                 self.conversation(user, project, conversation[1])

@@ -141,3 +141,15 @@
  .home .brand-name{position:static;width:auto;height:auto;margin:0;clip-path:none}
  .projects .nb-new{min-height:4rem;flex-direction:row;justify-content:flex-start;gap:0.75rem;padding:0.75rem}
 }
+
+.project-item{position:relative;min-width:0}
+.project-item>.nb-card{width:100%;height:100%}
+.project-item>.project-menu{position:absolute;top:.75rem;right:.75rem}
+.project-menu>summary{color:var(--muted);background:transparent;width:2.75rem;height:2.75rem;border-radius:50%}
+.project-menu[open]>summary,.project-menu>summary:hover{background:var(--hover);color:var(--ink)}
+.project-menu>div>button{min-height:2.75rem}
+.projects.list-view .project-item>.nb-card{padding-right:4.5rem}
+.projects.list-view .project-menu{top:50%;transform:translateY(-50%)}
+.workspace-brand:has(.project-menu){overflow:visible}
+.workspace-brand>.project-menu{flex:none}
+.workspace-brand .project-menu>div{left:0;right:auto}
